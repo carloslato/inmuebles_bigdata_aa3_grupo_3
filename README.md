@@ -38,7 +38,6 @@ Este proyecto implementa un **flujo completo de Big Data** para analizar datos d
 
 ```bash
 # 1. Clonar el repositorio
-git clone <repo-url>
 cd inmuebles_bigdata_aa3_grupo_3
 
 # 2. Crear directorio de salida (output de pipeline)
