@@ -1,0 +1,175 @@
+services:
+  # =============================================
+  # MongoDB - Almacenamiento de datos
+  # =============================================
+  mongodb:
+    image: mongo:7.0
+    container_name: mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - bigdata-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # =============================================
+  # Hadoop Cluster
+  # =============================================
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    restart: unless-stopped
+    ports:
+      - "9870:9870"
+      - "9000:9000"
+    volumes:
+      - hadoop_namenode:/hadoop/dfs/name
+      - ./apache-hadoop/input-data:/input-data
+      - ./apache-hadoop/src:/src
+      - ./apache-hadoop/namenode_entrypoint.sh:/usr/local/bin/namenode_entrypoint.sh
+      - ./pipeline_output:/host_output
+    entrypoint: ["/usr/local/bin/namenode_entrypoint.sh"]
+    environment:
+      - CLUSTER_NAME=inmuebles-cluster
+    env_file:
+      - apache-hadoop/hadoop.env
+    networks:
+      - bigdata-network
+    depends_on:
+      mongodb:
+        condition: service_started
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
+    restart: unless-stopped
+    volumes:
+      - hadoop_datanode:/hadoop/dfs/data
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    env_file:
+      - apache-hadoop/hadoop.env
+    networks:
+      - bigdata-network
+    depends_on:
+      - namenode
+
+  resourcemanager:
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+    container_name: resourcemanager
+    restart: unless-stopped
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864"
+    env_file:
+      - apache-hadoop/hadoop.env
+    networks:
+      - bigdata-network
+    depends_on:
+      - namenode
+      - datanode
+
+  nodemanager:
+    image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
+    container_name: nodemanager
+    restart: unless-stopped
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864 resourcemanager:8088"
+    env_file:
+      - apache-hadoop/hadoop.env
+    networks:
+      - bigdata-network
+    depends_on:
+      - namenode
+      - datanode
+      - resourcemanager
+
+  historyserver:
+    image: bde2020/hadoop-historyserver:2.0.0-hadoop3.2.1-java8
+    container_name: historyserver
+    restart: unless-stopped
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864 resourcemanager:8088"
+    volumes:
+      - hadoop_historyserver:/hadoop/yarn/timeline
+    env_file:
+      - apache-hadoop/hadoop.env
+    networks:
+      - bigdata-network
+    depends_on:
+      - namenode
+      - datanode
+      - resourcemanager
+
+  # =============================================
+  # Pipeline - Orquestador principal
+  # =============================================
+  pipeline:
+    build:
+      context: .
+      dockerfile: pipeline/Dockerfile
+    container_name: pipeline
+    volumes:
+      # Montar código fuente para que el pipeline pueda ejecutar el scraper
+      - ./scrape-data:/app/scrape-data
+      - ./pipeline:/app/pipeline
+      # Input-data de Hadoop (para escribir archivos CSV/MD allí)
+      - ./apache-hadoop/input-data:/app/apache-hadoop/input-data
+      # Output compartido con el dashboard
+      - pipeline_output:/pipeline_output
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/
+      - PYTHONUNBUFFERED=1
+    networks:
+      - bigdata-network
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      namenode:
+        condition: service_started
+
+  # =============================================
+  # Dashboard - Visualización con Nginx
+  # =============================================
+  dashboard:
+    image: nginx:alpine
+    container_name: dashboard
+    ports:
+      - "8080:80"
+    volumes:
+      - ./dashboard/index.html:/usr/share/nginx/html/index.html
+      - ./dashboard/nginx.conf:/etc/nginx/conf.d/default.conf
+      - pipeline_output:/pipeline_output:ro
+    networks:
+      - bigdata-network
+    depends_on:
+      - pipeline
+
+# =============================================
+# Volúmenes
+# =============================================
+volumes:
+  mongodb_data:
+  hadoop_namenode:
+  hadoop_datanode:
+  hadoop_historyserver:
+  pipeline_output:
+    # Bind mount for local inspection of pipeline results
+    driver: local
+    driver_opts:
+      type: none
+      device: ${PWD:-.}/pipeline_output
+      o: bind
+
+# =============================================
+# Red
+# =============================================
+networks:
+  bigdata-network:
+    driver: bridge

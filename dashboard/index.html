@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Análisis Inmobiliario Big Data</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --primary: #1a237e;
+            --secondary: #0d47a1;
+            --accent: #00bcd4;
+            --success: #4caf50;
+            --warning: #ff9800;
+            --danger: #f44336;
+            --dark: #263238;
+            --card-bg: #ffffff;
+            --bg: #f0f2f5;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--dark);
+            min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            padding: 20px 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        .header h1 { font-size: 24px; margin-bottom: 5px; }
+        .header p { opacity: 0.85; font-size: 14px; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        
+        /* Pipeline Status */
+        .pipeline-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .pipeline-card h2 { font-size: 18px; margin-bottom: 15px; color: var(--primary); }
+        .steps-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 10px;
+        }
+        .step-item {
+            padding: 12px;
+            border-radius: 8px;
+            border: 2px solid #e0e0e0;
+            text-align: center;
+            transition: all 0.3s;
+        }
+        .step-item .step-icon { font-size: 28px; margin-bottom: 5px; }
+        .step-item .step-label { font-size: 12px; color: #666; }
+        .step-item .step-name { font-size: 13px; font-weight: 600; margin-top: 3px; }
+        .step-status-pending { border-color: #e0e0e0; background: #fafafa; }
+        .step-status-running { border-color: var(--warning); background: #fff8e1; animation: pulse 1.5s infinite; }
+        .step-status-completed { border-color: var(--success); background: #e8f5e9; }
+        .step-status-failed { border-color: var(--danger); background: #ffebee; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .pipeline-status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        .badge-running { background: #fff8e1; color: #e65100; }
+        .badge-completed { background: #e8f5e9; color: #1b5e20; }
+        .badge-failed { background: #ffebee; color: #b71c1c; }
+        .badge-not_started { background: #f5f5f5; color: #757575; }
+
+        /* Grid de tarjetas */
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+        @media (max-width: 960px) {
+            .grid-2, .grid-3 { grid-template-columns: 1fr; }
+        }
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .card h3 { font-size: 15px; margin-bottom: 12px; color: var(--primary); }
+        .card .chart-container { position: relative; height: 280px; }
+        .card canvas { max-height: 280px; }
+        .stats-number {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        .stats-label { font-size: 12px; color: #888; }
+
+        /* Tabla resultados */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .data-table th {
+            background: var(--primary);
+            color: white;
+            padding: 10px 12px;
+            text-align: left;
+            font-weight: 500;
+        }
+        .data-table td {
+            padding: 8px 12px;
+            border-bottom: 1px solid #eee;
+        }
+        .data-table tr:hover { background: #f5f5f5; }
+        .table-wrapper {
+            max-height: 300px;
+            overflow-y: auto;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .tab-bar {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        .tab-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            background: #e0e0e0;
+            transition: all 0.2s;
+        }
+        .tab-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        .word-cloud {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 10px;
+            justify-content: center;
+            align-items: center;
+        }
+        .word-cloud span {
+            display: inline-block;
+            padding: 4px 10px;
+            background: #e3f2fd;
+            border-radius: 16px;
+            color: var(--primary);
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        .word-cloud span:hover {
+            background: var(--primary);
+            color: white;
+            transform: scale(1.1);
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+            font-size: 14px;
+        }
+        .error-msg {
+            background: #ffebee;
+            color: #b71c1c;
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-size: 13px;
+        }
+        .refresh-btn {
+            float: right;
+            padding: 6px 14px;
+            border: 2px solid var(--primary);
+            border-radius: 6px;
+            background: white;
+            color: var(--primary);
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 12px;
+        }
+        .refresh-btn:hover { background: var(--primary); color: white; }
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #999;
+            font-size: 12px;
+        }
+        .flex { display: flex; }
+        .flex-between { justify-content: space-between; }
+        .mt-10 { margin-top: 10px; }
+        .mb-10 { margin-bottom: 10px; }
+        .gap-10 { gap: 10px; }
+        .items-center { align-items: center; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container" style="padding: 0;">
+            <h1>🏢 Dashboard de Análisis Inmobiliario</h1>
+            <p>Pipeline Big Data: Scraper ➝ Hadoop ➝ Spark ➝ MongoDB ➝ Dashboard</p>
+        </div>
+    </div>
+    
+    <div class="container">
+        <!-- Pipeline Status -->
+        <div class="pipeline-card" id="pipelineStatus">
+            <h2>🔁 Estado del Pipeline</h2>
+            <div id="pipelineContent">
+                <div class="loading">⏳ Cargando estado del pipeline...</div>
+            </div>
+        </div>
+        
+        <!-- Stats Overview -->
+        <div class="grid-3 mb-10" id="statsOverview">
+            <div class="card" id="statTotal"><h3>📊 Propiedades</h3><div class="loading">...</div></div>
+            <div class="card" id="statPrice"><h3>💰 Precio Promedio</h3><div class="loading">...</div></div>
+            <div class="card" id="statDistricts"><h3>📍 Distritos</h3><div class="loading">...</div></div>
+        </div>
+        
+        <!-- Charts Section with Tabs -->
+        <div class="card">
+            <div class="flex flex-between items-center mb-10">
+                <h3 style="color: var(--primary); margin: 0;">📈 Análisis de Datos</h3>
+                <button class="refresh-btn" onclick="refreshAll()">🔄 Actualizar</button>
+            </div>
+            
+            <div class="tab-bar">
+                <button class="tab-btn active" onclick="switchTab('precios', this)">💰 Precios</button>
+                <button class="tab-btn" onclick="switchTab('ubicaciones', this)">📍 Ubicaciones</button>
+                <button class="tab-btn" onclick="switchTab('caracteristicas', this)">🏠 Características</button>
+                <button class="tab-btn" onclick="switchTab('portales', this)">🌐 Portales</button>
+                <button class="tab-btn" onclick="switchTab('palabras', this)">📝 Palabras Clave</button>
+                <button class="tab-btn" onclick="switchTab('datos', this)">🗃️ Datos RAW</button>
+            </div>
+            
+            <!-- Tab: Precios -->
+            <div class="tab-content active" id="tabPrecios">
+                <div class="grid-2">
+                    <div class="card"><h3>💰 Precios por Distrito</h3><div class="chart-container"><canvas id="chartPreciosDistrito"></canvas></div></div>
+                    <div class="card"><h3>📊 Distribución por Rango de Precio</h3><div class="chart-container"><canvas id="chartRangosPrecio"></canvas></div></div>
+                </div>
+                <div class="grid-2 mt-10">
+                    <div class="card"><h3>🪙 Distribución por Moneda</h3><div class="chart-container"><canvas id="chartMoneda"></canvas></div></div>
+                    <div class="card"><h3>📈 Área vs Precio</h3><div class="chart-container"><canvas id="chartAreaPrecio"></canvas></div></div>
+                </div>
+            </div>
+            
+            <!-- Tab: Ubicaciones -->
+            <div class="tab-content" id="tabUbicaciones">
+                <div class="grid-2">
+                    <div class="card"><h3>📍 Top 15 Distritos más Frecuentes</h3><div class="chart-container"><canvas id="chartDistritos"></canvas></div></div>
+                    <div class="card"><h3>🏘️ Precio Promedio por Distrito (Top 15)</h3><div class="chart-container"><canvas id="chartPrecioDistritoBar"></canvas></div></div>
+                </div>
+            </div>
+            
+            <!-- Tab: Características -->
+            <div class="tab-content" id="tabCaracteristicas">
+                <div class="grid-2">
+                    <div class="card"><h3>🛏️ Distribución de Dormitorios</h3><div class="chart-container"><canvas id="chartDormitorios"></canvas></div></div>
+                    <div class="card"><h3>🚿 Distribución de Baños</h3><div class="chart-container"><canvas id="chartBanios"></canvas></div></div>
+                </div>
+            </div>
+            
+            <!-- Tab: Portales -->
+            <div class="tab-content" id="tabPortales">
+                <div class="grid-2">
+                    <div class="card"><h3>🌐 Comparación entre Portales</h3><div class="chart-container"><canvas id="chartPortales"></canvas></div></div>
+                    <div class="card"><h3>🏷️ Top Distritos por Portal</h3><div class="table-wrapper" id="tablaDistritosPortal"><div class="loading">Cargando...</div></div></div>
+                </div>
+            </div>
+            
+            <!-- Tab: Palabras Clave -->
+            <div class="tab-content" id="tabPalabras">
+                <div class="card">
+                    <h3>📝 Palabras más frecuentes en descripciones</h3>
+                    <div id="wordCloudContainer"><div class="loading">Cargando...</div></div>
+                </div>
+                <div class="card mt-10">
+                    <h3>🧠 Hadoop WordCount - Top palabras</h3>
+                    <div id="wordcountTable"><div class="loading">Cargando...</div></div>
+                </div>
+            </div>
+            
+            <!-- Tab: Datos RAW -->
+            <div class="tab-content" id="tabDatos">
+                <div class="card">
+                    <h3>🗃️ Vista previa de datos</h3>
+                    <div id="rawDataPreview"><div class="loading">Cargando datos...</div></div>
+                </div>
+                <div class="card mt-10">
+                    <h3>📋 MongoDB - Colecciones</h3>
+                    <div id="mongoCollections"><div class="loading">Cargando...</div></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            🏢 Proyecto Inmobiliario Big Data | Instituto CERTUS | Ciclo 5
+        </div>
+    </div>
+    
+    <script>
+    // Configuración - el dashboard carga datos del directorio de salida compartido
+    const DATA_URL = '/data';
+    const STATUS_URL = '/data/pipeline_status.json';
+    const SPARK_RESULTS_URL = '/data/spark_results';
+    
+    let charts = {};
+    
+    // ===== HELPERS =====
+    async function fetchJSON(url) {
+        try {
+            const resp = await fetch(url + '?t=' + Date.now());
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            return await resp.json();
+        } catch (e) {
+            console.warn(`Error fetching ${url}:`, e);
+            return null;
+        }
+    }
+    
+    function getColor(idx, alpha=1) {
+        const colors = [
+            `rgba(26,35,126,${alpha})`, `rgba(13,71,161,${alpha})`,
+            `rgba(0,188,212,${alpha})`, `rgba(76,175,80,${alpha})`,
+            `rgba(255,152,0,${alpha})`, `rgba(244,67,54,${alpha})`,
+            `rgba(156,39,176,${alpha})`, `rgba(233,30,99,${alpha})`,
+            `rgba(63,81,181,${alpha})`, `rgba(0,150,136,${alpha})`,
+            `rgba(121,85,72,${alpha})`, `rgba(96,125,139,${alpha})`,
+            `rgba(255,87,34,${alpha})`, `rgba(103,58,183,${alpha})`,
+            `rgba(205,220,57,${alpha})`
+        ];
+        return colors[idx % colors.length];
+    }
+    
+    function destroyChart(id) {
+        if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+    }
+    
+    // ===== PIPELINE STATUS =====
+    async function loadPipelineStatus() {
+        const status = await fetchJSON(STATUS_URL);
+        const container = document.getElementById('pipelineContent');
+        
+        if (!status || !status.steps) {
+            container.innerHTML = `<div class="loading">⏳ Pipeline no iniciado o datos no disponibles</div>`;
+            return;
+        }
+        
+        const statusColors = {
+            'running': 'badge-running',
+            'completed': 'badge-completed',
+            'failed': 'badge-failed',
+            'not_started': 'badge-not_started',
+            'pending': 'badge-not_started'
+        };
+        
+        const statusLabels = {
+            'running': '🟡 En ejecución',
+            'completed': '✅ Completado',
+            'failed': '❌ Falló',
+            'not_started': '⏸️ No iniciado',
+            'pending': '⏸️ Pendiente'
+        };
+        
+        const icons = {
+            'scraper': '🕸️',
+            'extract_csv': '🔄',
+            'mongodb_load': '🗄️',
+            'hadoop_wordcount': '🐘',
+            'spark_analysis': '⚡',
+            'mongodb_results': '💾'
+        };
+        
+        let html = `<span class="pipeline-status-badge ${statusColors[status.pipeline] || 'badge-not_started'}">${statusLabels[status.pipeline] || '❓ Desconocido'}</span>`;
+        
+        if (status.started_at) {
+            html += `<span style="font-size:12px;color:#888;margin-left:10px;">Iniciado: ${new Date(status.started_at).toLocaleString('es-PE')}</span>`;
+        }
+        if (status.completed_at) {
+            html += `<span style="font-size:12px;color:#888;margin-left:10px;">Finalizado: ${new Date(status.completed_at).toLocaleString('es-PE')}</span>`;
+        }
+        if (status.error) {
+            html += `<div class="error-msg">⚠️ ${status.error}</div>`;
+        }
+        
+        html += `<div class="steps-grid mt-10">`;
+        for (const step of status.steps) {
+            const icon = icons[step.name] || '📋';
+            const stepStatus = step.status || 'pending';
+            html += `
+                <div class="step-item step-status-${stepStatus}">
+                    <div class="step-icon">${icon}</div>
+                    <div class="step-label">${step.label}</div>
+                    <div style="font-size:11px;color:#999;margin-top:2px;">${statusLabels[stepStatus]}</div>
+                </div>
+            `;
+        }
+        html += `</div>`;
+        
+        // Stats del pipeline
+        if (status.stats && Object.keys(status.stats).length > 0) {
+            html += `<div style="margin-top:12px;padding-top:12px;border-top:1px solid #eee;">`;
+            html += `<h4 style="font-size:13px;color:#666;margin-bottom:8px;">📊 Estadísticas del Pipeline</h4>`;
+            html += `<div class="flex gap-10" style="flex-wrap:wrap;">`;
+            for (const [key, val] of Object.entries(status.stats)) {
+                if (typeof val === 'number') {
+                    html += `<div style="background:#f5f5f5;padding:6px 12px;border-radius:6px;font-size:12px;"><strong>${key}:</strong> ${val.toLocaleString()}</div>`;
+                } else if (typeof val === 'string') {
+                    html += `<div style="background:#f5f5f5;padding:6px 12px;border-radius:6px;font-size:12px;"><strong>${key}:</strong> ${val}</div>`;
+                }
+            }
+            html += `</div></div>`;
+        }
+        
+        container.innerHTML = html;
+    }
+    
+    // ===== STATS OVERVIEW =====
+    async function loadStatsOverview() {
+        const stats = await fetchJSON(`${SPARK_RESULTS_URL}/estadisticas_globales.json`);
+        if (!stats) {
+            document.getElementById('statTotal').querySelector('.loading').textContent = 'No disponible';
+            document.getElementById('statPrice').querySelector('.loading').textContent = 'No disponible';
+            document.getElementById('statDistricts').querySelector('.loading').textContent = 'No disponible';
+            return;
+        }
+        
+        document.getElementById('statTotal').innerHTML = `
+            <h3>📊 Propiedades</h3>
+            <div class="stats-number">${(stats.total_propiedades || 0).toLocaleString()}</div>
+            <div class="stats-label">${stats.por_portal ? Object.entries(stats.por_portal).map(([k,v]) => `${k}: ${v}`).join(' · ') : ''}</div>
+        `;
+        
+        const avgPrice = stats.precio_promedio || 0;
+        document.getElementById('statPrice').innerHTML = `
+            <h3>💰 Precio Promedio</h3>
+            <div class="stats-number" style="font-size:22px;">$${Number(avgPrice).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</div>
+            <div class="stats-label">Min: $${(stats.precio_minimo || 0).toLocaleString()} · Max: $${(stats.precio_maximo || 0).toLocaleString()}</div>
+        `;
+        
+        const districts = stats.top_10_distritos || [];
+        document.getElementById('statDistricts').innerHTML = `
+            <h3>📍 Top Distritos</h3>
+            <div style="font-size:13px;">
+                ${districts.slice(0,5).map(d => `<div>• ${d.distrito}: ${(d.cantidad || 0).toLocaleString()} prop.</div>`).join('')}
+            </div>
+        `;
+    }
+    
+    // ===== CHARTS =====
+    async function loadCharts() {
+        // Precios por distrito
+        const preciosDistrito = await fetchJSON(`${SPARK_RESULTS_URL}/precios_por_distrito.json`);
+        if (preciosDistrito && preciosDistrito.length > 0) {
+            const top15 = preciosDistrito.slice(0, 15);
+            createBarChart('chartPreciosDistrito', 
+                top15.map(d => d.distrito || 'N/A'),
+                top15.map(d => d.cantidad || 0),
+                'Cantidad de Propiedades', getColor(0, 0.7));
+        }
+        
+        // Rangos de precio
+        const rangos = await fetchJSON(`${SPARK_RESULTS_URL}/distribucion_rangos_precio.json`);
+        if (rangos && rangos.length > 0) {
+            createDoughnutChart('chartRangosPrecio',
+                rangos.map(d => d.rango_precio || 'N/A'),
+                rangos.map(d => d.cantidad || 0),
+                'Propiedades por Rango');
+        }
+        
+        // Moneda
+        const moneda = await fetchJSON(`${SPARK_RESULTS_URL}/precios_por_moneda.json`);
+        if (moneda && moneda.length > 0) {
+            createDoughnutChart('chartMoneda',
+                moneda.map(d => d.moneda || 'N/A'),
+                moneda.map(d => d.cantidad || 0),
+                'Propiedades por Moneda');
+        }
+        
+        // Área vs Precio (scatter)
+        const areaPrecio = await fetchJSON(`${SPARK_RESULTS_URL}/area_vs_precio.json`);
+        if (areaPrecio && areaPrecio.length > 0) {
+            const sample = areaPrecio.filter(d => d.area_m2 && d.precio).slice(0, 200);
+            createScatterChart('chartAreaPrecio',
+                sample.map(d => ({x: d.area_m2, y: d.precio})),
+                'Área (m²)', 'Precio ($)');
+        }
+        
+        // Top distritos
+        const distritos = await fetchJSON(`${SPARK_RESULTS_URL}/precios_por_distrito.json`);
+        if (distritos && distritos.length > 0) {
+            const top15 = distritos.slice(0, 15);
+            createBarChart('chartDistritos',
+                top15.map(d => d.distrito || 'N/A'),
+                top15.map(d => d.cantidad || 0),
+                'Propiedades', getColor(4, 0.7));
+        }
+        
+        // Precio promedio por distrito
+        if (distritos && distritos.length > 0) {
+            const top15 = distritos.slice(0, 15);
+            createBarChart('chartPrecioDistritoBar',
+                top15.map(d => d.distrito || 'N/A'),
+                top15.map(d => Number(d.precio_promedio || 0)),
+                'Precio Promedio ($)', getColor(2, 0.7));
+        }
+        
+        // Dormitorios
+        const dorm = await fetchJSON(`${SPARK_RESULTS_URL}/distribucion_dormitorios.json`);
+        if (dorm && dorm.length > 0) {
+            createBarChart('chartDormitorios',
+                dorm.map(d => `${d.dormitorios_final || '?'} dorm.`),
+                dorm.map(d => d.cantidad || 0),
+                'Propiedades', getColor(7, 0.7));
+        }
+        
+        // Baños
+        const banios = await fetchJSON(`${SPARK_RESULTS_URL}/distribucion_banios.json`);
+        if (banios && banios.length > 0) {
+            createBarChart('chartBanios',
+                banios.map(d => `${d.banios_final || '?'} baños`),
+                banios.map(d => d.cantidad || 0),
+                'Propiedades', getColor(5, 0.7));
+        }
+        
+        // Comparación portales
+        const portales = await fetchJSON(`${SPARK_RESULTS_URL}/comparacion_portales.json`);
+        if (portales && portales.length > 0) {
+            createBarChart('chartPortales',
+                portales.map(d => d.portal || 'N/A'),
+                portales.map(d => d.cantidad || 0),
+                'Propiedades', getColor(3, 0.7));
+        }
+        
+        // Top distritos por portal (tabla)
+        const distPortal = await fetchJSON(`${SPARK_RESULTS_URL}/top_distritos_por_portal.json`);
+        if (distPortal && distPortal.length > 0) {
+            let html = `<table class="data-table"><thead><tr><th>Portal</th><th>Distrito</th><th>Cantidad</th></tr></thead><tbody>`;
+            for (const row of distPortal.slice(0, 50)) {
+                html += `<tr><td>${row.portal || 'N/A'}</td><td>${row.distrito || 'N/A'}</td><td>${(row.cantidad || 0).toLocaleString()}</td></tr>`;
+            }
+            html += `</tbody></table>`;
+            document.getElementById('tablaDistritosPortal').innerHTML = html;
+        }
+        
+        // Nube de palabras
+        const palabras = await fetchJSON(`${SPARK_RESULTS_URL}/palabras_frecuentes_descripciones.json`);
+        if (palabras && palabras.length > 0) {
+            const top50 = palabras.slice(0, 50);
+            const maxFreq = Math.max(...top50.map(p => p.frecuencia || 0));
+            let cloudHtml = `<div class="word-cloud">`;
+            for (const p of top50) {
+                const size = 12 + (p.frecuencia / maxFreq) * 20;
+                cloudHtml += `<span style="font-size:${size}px; opacity:${0.5 + (p.frecuencia / maxFreq) * 0.5};">${p.word}</span>`;
+            }
+            cloudHtml += `</div>`;
+            document.getElementById('wordCloudContainer').innerHTML = cloudHtml;
+        }
+        
+        // Hadoop WordCount
+        loadWordCount();
+        
+        // Datos RAW preview
+        const rawData = await fetchJSON(`${SPARK_RESULTS_URL}/area_vs_precio.json`);
+        if (rawData && rawData.length > 0) {
+            const preview = rawData.slice(0, 20);
+            const keys = Object.keys(preview[0] || {});
+            let html = `<table class="data-table"><thead><tr>${keys.map(k => `<th>${k}</th>`).join('')}</tr></thead><tbody>`;
+            for (const row of preview) {
+                html += `<tr>${keys.map(k => `<td>${row[k] !== undefined && row[k] !== null ? String(row[k]).substring(0, 40) : ''}</td>`).join('')}</tr>`;
+            }
+            html += `</tbody></table>`;
+            document.getElementById('rawDataPreview').innerHTML = html;
+        }
+    }
+    
+    async function loadWordCount() {
+        try {
+            const resp = await fetch('/data/hadoop_output/');
+            // Since we can't list directories, load known file
+            const wc = await fetchJSON('/data/hadoop_wordcount.json');
+            if (wc && wc.length > 0) {
+                const top30 = wc.slice(0, 30);
+                let html = `<table class="data-table"><thead><tr><th>#</th><th>Palabra</th><th>Frecuencia</th></tr></thead><tbody>`;
+                top30.forEach((row, i) => {
+                    html += `<tr><td>${i+1}</td><td><strong>${row.word || row.palabra || 'N/A'}</strong></td><td>${(row.count || row.frecuencia || 0).toLocaleString()}</td></tr>`;
+                });
+                html += `</tbody></table>`;
+                document.getElementById('wordcountTable').innerHTML = html;
+            } else {
+                document.getElementById('wordcountTable').innerHTML = '<div class="loading">Resultados de WordCount no disponibles aún</div>';
+            }
+        } catch (e) {
+            document.getElementById('wordcountTable').innerHTML = '<div class="loading">Resultados de WordCount no disponibles</div>';
+        }
+    }
+    
+    // ===== CHART CREATORS =====
+    function createBarChart(canvasId, labels, data, label, color) {
+        destroyChart(canvasId);
+        const ctx = document.getElementById(canvasId)?.getContext('2d');
+        if (!ctx) return;
+        
+        charts[canvasId] = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: label,
+                    data: data,
+                    backgroundColor: labels.map((_, i) => getColor(i, 0.7)),
+                    borderColor: labels.map((_, i) => getColor(i, 1)),
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => `${ctx.parsed.y.toLocaleString()}`
+                        }
+                    }
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { callback: v => v.toLocaleString() } },
+                    x: { ticks: { maxRotation: 45, font: { size: 10 } } }
+                }
+            }
+        });
+    }
+    
+    function createDoughnutChart(canvasId, labels, data, title) {
+        destroyChart(canvasId);
+        const ctx = document.getElementById(canvasId)?.getContext('2d');
+        if (!ctx) return;
+        
+        charts[canvasId] = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: labels.map((_, i) => getColor(i, 0.7)),
+                    borderColor: labels.map((_, i) => getColor(i, 1)),
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { font: { size: 10 } } },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => `${ctx.label}: ${ctx.parsed.toLocaleString()} (${(ctx.parsed / data.reduce((a,b) => a+b, 0) * 100).toFixed(1)}%)`
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    function createScatterChart(canvasId, points, xLabel, yLabel) {
+        destroyChart(canvasId);
+        const ctx = document.getElementById(canvasId)?.getContext('2d');
+        if (!ctx) return;
+        
+        charts[canvasId] = new Chart(ctx, {
+            type: 'scatter',
+            data: {
+                datasets: [{
+                    label: 'Propiedades',
+                    data: points,
+                    backgroundColor: getColor(2, 0.5),
+                    borderColor: getColor(2, 1),
+                    pointRadius: 3,
+                    pointHoverRadius: 5
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => `Área: ${ctx.parsed.x.toFixed(0)} m² · Precio: $${ctx.parsed.y.toLocaleString()}`
+                        }
+                    }
+                },
+                scales: {
+                    x: { title: { display: true, text: xLabel }, ticks: { callback: v => `${v} m²` } },
+                    y: { title: { display: true, text: yLabel }, ticks: { callback: v => `$${v.toLocaleString()}` } }
+                }
+            }
+        });
+    }
+    
+    // ===== TABS =====
+    function switchTab(tabName, btn) {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+        const tabMap = {
+            'precios': 'tabPrecios',
+            'ubicaciones': 'tabUbicaciones',
+            'caracteristicas': 'tabCaracteristicas',
+            'portales': 'tabPortales',
+            'palabras': 'tabPalabras',
+            'datos': 'tabDatos'
+        };
+        const el = document.getElementById(tabMap[tabName]);
+        if (el) el.classList.add('active');
+    }
+    
+    // ===== REFRESH ALL =====
+    async function refreshAll() {
+        // Destroy all charts
+        Object.keys(charts).forEach(k => destroyChart(k));
+        
+        // Reload
+        await Promise.all([
+            loadPipelineStatus(),
+            loadStatsOverview(),
+            loadCharts()
+        ]);
+        
+        // Auto-refresh every 15s if pipeline is running
+        const status = await fetchJSON(STATUS_URL);
+        if (status && status.pipeline === 'running') {
+            setTimeout(refreshAll, 15000);
+        }
+    }
+    
+    // ===== INIT =====
+    document.addEventListener('DOMContentLoaded', async () => {
+        await refreshAll();
+    });
+    </script>
+</body>
+</html>
