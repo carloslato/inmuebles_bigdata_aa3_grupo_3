@@ -1,0 +1,13 @@
+[tools]
+python = "3.14"
+
+[env]
+# Use the project name derived from the current directory
+PROJECT_NAME = "{{ config_root | basename }}"
+
+# Automatic virtualenv activation
+_.python.venv = { path = ".venv", create = true }
+
+[tasks.run]
+description = "Run the application"
+run = "python app.py"
