@@ -199,10 +199,15 @@ class InfoCasasSpider(Spider):
     name = "infocasas"
     start_urls = ["https://www.infocasas.com.pe/venta/departamentos/lima"]
     concurrent_requests = 5
+    max_pages = 50  # Límite de seguridad para evitar bucles infinitos
 
     async def parse(self, response: Response):
         """Procesa la página de listado de infocasas"""
         cards = response.css('.listingCard')
+        
+        # Si no hay tarjetas en la página, asumimos que llegamos al final
+        if not cards:
+            return
         
         for card in cards:
             item = {}
@@ -259,30 +264,51 @@ class InfoCasasSpider(Spider):
             
             yield item
         
-        # Paginación de infocasas
-        # Estructura: <ul class="list" role="navigation" aria-label="Pagination">
-        #   <li class="ant-pagination-item PE ant-pagination-item-active">...1</li>
-        #   <li class="ant-pagination-item PE"><a href="/venta/departamentos/lima/pagina2" aria-label="Page 2">2</a></li>
-        #   ...
-        #   <li class="ant-pagination-item PE"><a href="/venta/departamentos/lima/pagina2" rel="nofollow">></a></li>
-        #
-        # Estrategia 1: Buscar el enlace ">" (siguiente)
-        next_page_link = response.css('.ant-pagination-item a:has-text(">")')
-        if next_page_link:
-            href = next_page_link.css('::attr(href)').get("")
-            if href:
-                yield Request(url=f"https://www.infocasas.com.pe{href}", callback=self.parse)
-                return
+        # Paginación de infocasas — construcción manual de URLs
+        # Página 1: https://www.infocasas.com.pe/venta/departamentos/lima
+        # Página 2+: https://www.infocasas.com.pe/venta/departamentos/lima/pagina{N}
+        base_url = "https://www.infocasas.com.pe/venta/departamentos/lima"
         
-        # Estrategia 2: Encontrar página activa y tomar el siguiente <li> 
-        active_li = response.css('li.ant-pagination-item-active')
-        if active_li:
-            # Buscar el siguiente <li> hermano que contenga un enlace
-            next_li = active_li.css('+ li.ant-pagination-item a')
-            if next_li:
-                href = next_li.css('::attr(href)').get("")
-                if href:
-                    yield Request(url=f"https://www.infocasas.com.pe{href}", callback=self.parse)
+        # Determinar la página actual desde la URL
+        current_page = 1
+        url_str = str(response.url)
+        if "/pagina" in url_str:
+            # Extraer el número de página de la URL (ej: .../pagina2)
+            import re as regex
+            match = regex.search(r'/pagina(\d+)', url_str)
+            if match:
+                current_page = int(match.group(1))
+        
+        # También se puede detectar desde el paginador activo
+        active_text = response.css('li.ant-pagination-item-active::text').get("")
+        if active_text and active_text.strip().isdigit():
+            current_page = int(active_text.strip())
+        
+        next_page = current_page + 1
+        
+        # Verificar que el paginador tiene un enlace a la siguiente página
+        # para confirmar que no es la última página
+        has_next = False
+        
+        # Buscar el enlace ">" (siguiente)
+        next_links = response.css('.ant-pagination-item a')
+        for link in next_links:
+            link_text = link.css('::text').get("").strip()
+            if link_text == ">":
+                has_next = True
+                break
+        
+        # También verificar si hay enlaces de página numerada más allá de la actual
+        if not has_next:
+            for link in next_links:
+                link_text = link.css('::text').get("").strip()
+                if link_text.isdigit() and int(link_text) > current_page:
+                    has_next = True
+                    break
+        
+        if has_next and next_page <= self.max_pages:
+            next_url = f"{base_url}/pagina{next_page}"
+            yield Request(url=next_url, callback=self.parse)
 
 
 def run_all_spiders():
