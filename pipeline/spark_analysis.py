@@ -24,9 +24,9 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     col, count, avg, sum as spark_sum, when, lit,
     regexp_extract, lower, split, explode, desc, asc,
-    countDistinct, round as spark_round, stddev, min, max as spark_max, length
+    countDistinct, round as spark_round, stddev, min as spark_min, max as spark_max, length
 )
-from pyspark.sql.types import DoubleType, IntegerType
+from pyspark.sql.types import DoubleType, IntegerType, StringType, StructType, StructField
 
 
 def parse_args():
@@ -161,7 +161,7 @@ def analysis_price_by_district(df):
         .agg(
             count("*").alias("cantidad"),
             spark_round(avg("precio_min"), 2).alias("precio_promedio"),
-            spark_round(min("precio_min"), 2).alias("precio_minimo"),
+            spark_round(spark_min("precio_min"), 2).alias("precio_minimo"),
             spark_round(spark_max("precio_min"), 2).alias("precio_maximo"),
             spark_round(stddev("precio_min"), 2).alias("precio_stddev"),
             countDistinct("portal").alias("portales_origen")
@@ -218,7 +218,7 @@ def analysis_portal_comparison(df):
         .agg(
             count("*").alias("cantidad"),
             spark_round(avg("precio_min"), 2).alias("precio_promedio"),
-            spark_round(min("precio_min"), 2).alias("precio_minimo"),
+            spark_round(spark_min("precio_min"), 2).alias("precio_minimo"),
             spark_round(spark_max("precio_min"), 2).alias("precio_maximo"),
             spark_round(stddev("precio_min"), 2).alias("precio_stddev"),
             countDistinct("distrito").alias("distritos_distintos"),
@@ -338,11 +338,18 @@ def main():
     # Sanitizar precios
     print("\n[1/8] Sanitizando precios...")
     from pyspark.sql.functions import udf
-    sanitize_udf = udf(sanitize_price)
+    
+    # Definir schema de retorno: (precio_min: double, precio_max: double, moneda: string)
+    price_schema = StructType([
+        StructField("min", DoubleType(), True),
+        StructField("max", DoubleType(), True),
+        StructField("currency", StringType(), True)
+    ])
+    sanitize_udf = udf(sanitize_price, price_schema)
     df = df.withColumn("precio_info", sanitize_udf(col("precio")))
-    df = df.withColumn("precio_min", col("precio_info").getItem("_1").cast(DoubleType()))
-    df = df.withColumn("precio_max", col("precio_info").getItem("_2").cast(DoubleType()))
-    df = df.withColumn("moneda", col("precio_info").getItem("_3"))
+    df = df.withColumn("precio_min", col("precio_info").min)
+    df = df.withColumn("precio_max", col("precio_info").max)
+    df = df.withColumn("moneda", col("precio_info").currency)
     prices_parsed = df.filter(col("precio_min").isNotNull()).count()
     print(f"  Precios parseados: {prices_parsed}/{total_count}")
     
@@ -384,7 +391,7 @@ def main():
     
     price_stats = df.agg(
         spark_round(avg("precio_min"), 2).alias("precio_promedio"),
-        spark_round(min("precio_min"), 2).alias("precio_minimo"),
+        spark_round(spark_min("precio_min"), 2).alias("precio_minimo"),
         spark_round(spark_max("precio_min"), 2).alias("precio_maximo")
     ).collect()
     if price_stats:

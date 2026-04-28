@@ -432,17 +432,6 @@ def step_spark_analysis():
 
         complete_step("spark_analysis", stats)
 
-        # Copiar resultados de Spark al output
-        import shutil
-        spark_dest = os.path.join(OUTPUT_DIR, "spark_results")
-        if os.path.exists(output_path):
-            for f in os.listdir(output_path):
-                src = os.path.join(output_path, f)
-                dst = os.path.join(spark_dest, f)
-                os.makedirs(spark_dest, exist_ok=True)
-                shutil.copy2(src, dst)
-                log(f"Resultado Spark copiado: {f}")
-
         return True, stats
 
     except Exception as e:

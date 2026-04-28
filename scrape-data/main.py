@@ -10,6 +10,9 @@ class AdondeVivirSpider(Spider):
     start_urls = ["https://www.adondevivir.com/departamentos-en-venta-en-lima.html"]
     concurrent_requests = 5
 
+    max_items = 1000  # <-- LIMITE (None para ilimitado)
+    scraped_count = 0
+
     async def parse(self, response: Response):
         """Procesa la página de listado de adondevivir"""
         cards = response.css('.postingsList-module__card-container')
@@ -84,7 +87,12 @@ class AdondeVivirSpider(Spider):
             if extras:
                 item["extras"] = ", ".join(e.strip() for e in extras)
             
+            self.scraped_count += 1
             yield item
+        
+        # paginación SOLO si aun no llegas al limite
+        if self.max_items and self.scraped_count >= self.max_items:
+            return
         
         # Paginación de adondevivir
         # Estructura: <div class="paging-module__container-paging">
@@ -101,6 +109,9 @@ class LaEncontreSpider(Spider):
     name = "laencontre"
     start_urls = ["https://www.laencontre.com.pe/venta/departamentos/lima"]
     concurrent_requests = 5
+
+    max_items = 1000  # <-- LIMITE (None para ilimitado)
+    scraped_count = 0
 
     async def parse(self, response: Response):
         """Procesa la página de listado de laencontre"""
@@ -151,8 +162,12 @@ class LaEncontreSpider(Spider):
             item["id_anuncio"] = card.css('::attr(id)').get("")
             item["tipo"] = card.css('::attr(itemtype)').get("")
             
+            self.scraped_count += 1
             yield item
         
+        # paginación SOLO si aun no llegas al limite
+        if self.max_items and self.scraped_count >= self.max_items:
+            return
         # Paginación de laencontre
         # Estructura: <ul class="pagination">
         #   <li class="current"><span>1</span></li>
@@ -199,7 +214,7 @@ class InfoCasasSpider(Spider):
     name = "infocasas"
     start_urls = ["https://www.infocasas.com.pe/venta/departamentos/lima"]
     concurrent_requests = 5
-    max_pages = 50  # Límite de seguridad para evitar bucles infinitos
+    max_pages = 25  # Límite de seguridad para evitar bucles infinitos
 
     async def parse(self, response: Response):
         """Procesa la página de listado de infocasas"""
