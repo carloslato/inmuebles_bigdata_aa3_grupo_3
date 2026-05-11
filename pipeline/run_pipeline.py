@@ -597,6 +597,19 @@ def main():
     # Inicializar estado del pipeline
     init_pipeline()
 
+    # Configurar Kafka topics
+    log("\n")
+    log("Configurando Kafka...")
+    rc, out, err = run_cmd(
+        ["python", "kafka_setup.py"],
+        cwd=PIPELINE_DIR,
+        timeout=60  # 1 min max
+    )
+    if rc != 0:
+        log(f"Error configurando Kafka: {err}")
+        log("Pipeline detenido por error en Kafka setup")
+        return 1
+
     all_success = True
     all_stats = {}
 
