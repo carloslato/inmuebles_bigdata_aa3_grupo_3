@@ -195,7 +195,7 @@ Tu tarea es agregar Kafka al ecosistema. Debes:
 
 7. **Actualizar pipeline/Dockerfile** si es necesario (pip ya instalaría desde requirements.txt)
 
-IMPORTANTE: Usa Windows PowerShell (no Bash). No uses &&. El proyecto está en e:\HDD_SHARED_LATO\certus\ciclo 5\bigdata\semana 4\inmuebles_bigdata_aa3_grupo_3
+IMPORTANTE: Usa Windows PowerShell (no Bash). No uses &&. 
 
 Los archivos que debes modificar/crear son:
 - docker-compose.yml (modificar)
@@ -272,7 +272,7 @@ Debes crear el archivo `pipeline/kafka_producer.py` con:
    - Portales: adondevivir, infocasas, laencontre
 
 5. **Estructura de cada evento (JSON):**
-   ```json
+   json
    {
      "event_id": "uuid",
      "event_type": "nueva_propiedad|cambio_precio|propiedad_vendida|consulta_usuario|propiedad_destacada",
@@ -295,7 +295,7 @@ Debes crear el archivo `pipeline/kafka_producer.py` con:
        "version": "1.0"
      }
    }
-   ```
+   
 
 6. **Reglas de alerta (2 como mínimo):**
    - `precio_bajo`: Si una propiedad en Miraflores o San Isidro tiene precio < $80,000 USD, generar alerta
@@ -323,8 +323,9 @@ Debes crear el archivo `pipeline/kafka_producer.py` con:
 11. **Prueba rápida** (opcional, para desarrollo):
     - Crear un pequeño script de prueba que consuma 5 eventos del topic para verificar
 
-IMPORTANTE: Usa Windows PowerShell (no Bash). No uses &&. El proyecto está en e:\HDD_SHARED_LATO\certus\ciclo 5\bigdata\semana 4\inmuebles_bigdata_aa3_grupo_3
+IMPORTANTE: Usa Windows PowerShell (no Bash). No uses &&. 
 ```
+
 
 ---
 
@@ -376,7 +377,7 @@ Tu tarea es crear un job de Spark Structured Streaming que procese eventos desde
 Crea el archivo `pipeline/spark_streaming.py`:
 
 1. **SparkSession con configuración Kafka:**
-   ```python
+   python
    spark = SparkSession.builder \
        .appName("InmueblesStreaming") \
        .master("local[*]") \
@@ -384,17 +385,17 @@ Crea el archivo `pipeline/spark_streaming.py`:
                "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,"
                "org.mongodb.spark:mongo-spark-connector_2.12:10.2.0") \
        .getOrCreate()
-   ```
+   
 
 2. **Lectura desde Kafka:**
-   ```python
+    python
    df_kafka = spark.readStream \
        .format("kafka") \
        .option("kafka.bootstrap.servers", "kafka:9092") \
        .option("subscribe", "inmuebles_events") \
        .option("startingOffsets", "latest") \
        .load()
-   ```
+   
 
 3. **Parsear el valor JSON:**
    - Usar from_json() con schema definido con StructType
@@ -402,7 +403,7 @@ Crea el archivo `pipeline/spark_streaming.py`:
    - Cachear el DataFrame parseado
 
 4. **Resumen 1 - Eventos por tipo (window de 10 segundos):**
-   ```python
+   python
    eventos_por_tipo = df_parsed \
        .withWatermark("timestamp", "20 seconds") \
        .groupBy(
@@ -410,11 +411,11 @@ Crea el archivo `pipeline/spark_streaming.py`:
            col("event_type")
        ) \
        .agg(count("*").alias("total_eventos"))
-   ```
+   
    - Output: console (para ver en terminal) y MongoDB (colección: resumen_eventos_streaming)
 
 5. **Resumen 2 - Precio promedio por distrito (ventana deslizante 30 seg):**
-   ```python
+   python
    precio_promedio_distrito = df_parsed \
        .filter(col("event_type").isin("nueva_propiedad", "cambio_precio")) \
        .withWatermark("timestamp", "30 seconds") \
@@ -426,7 +427,7 @@ Crea el archivo `pipeline/spark_streaming.py`:
            avg("data.price").alias("precio_promedio"),
            count("*").alias("total_propiedades")
        )
-   ```
+   
    - Output: MongoDB (colección: resumen_precios_streaming)
 
 6. **Alertas streaming:**
@@ -436,7 +437,7 @@ Crea el archivo `pipeline/spark_streaming.py`:
 
 7. **Operación con RDD (obligatorio para la evaluación):**
    - Agregar un transform personalizado con RDD, por ejemplo:
-   ```python
+   python
    # Ejemplo: filtrar eventos con precio anómalo usando RDD
    def detectar_anomalias_rdd(rows):
        # Lógica personalizada con RDD
@@ -445,7 +446,7 @@ Crea el archivo `pipeline/spark_streaming.py`:
            if row.data.price > 1000000:  # Más de 1M USD
                anomalias.append(("anomalia_precio_alto", row.event_id, row.data.price))
        return anomalias
-   ```
+   
 
 8. **Escritura a MongoDB:**
    - Usar foreachBatch() para escribir micro-batches a MongoDB
@@ -457,7 +458,7 @@ Crea el archivo `pipeline/spark_streaming.py`:
      - resumen_precios_streaming: precios promedio
 
 9. **Ejecución del streaming:**
-   ```python
+   python
    query = df_parsed.writeStream \
        .foreachBatch(write_to_mongodb) \
        .outputMode("update") \
@@ -465,7 +466,7 @@ Crea el archivo `pipeline/spark_streaming.py`:
        .start()
    
    query.awaitTermination(timeout=60)  # 60 seg de streaming
-   ```
+   
 
 10. **Integrar en run_pipeline.py:**
     - Agregar step_spark_streaming() como nuevo STEP (después del productor Kafka)
@@ -476,7 +477,7 @@ Crea el archivo `pipeline/spark_streaming.py`:
     - Verificar que los eventos aparecen en MongoDB: db.eventos_streaming.find().count()
     - Verificar resúmenes: db.resumen_eventos_streaming.find().pretty()
 
-IMPORTANTE: Usa Windows PowerShell (no Bash). No uses &&. El proyecto está en e:\HDD_SHARED_LATO\certus\ciclo 5\bigdata\semana 4\inmuebles_bigdata_aa3_grupo_3
+IMPORTANTE: Usa Windows PowerShell (no Bash). No uses &&. 
 Si el jar de mongo-spark-connector causa problemas, usa pymongo directamente dentro de foreachBatch.
 ```
 
@@ -560,13 +561,13 @@ Debes modificar `dashboard/index.html` (es un solo archivo que combina HTML+CSS+
    
    if __name__ == "__main__":
        app.run(host="0.0.0.0", port=5000)
-   ```
+   
    - Agregar Flask y flask-cors a pipeline/requirements.txt
    - Agregar este servicio al docker-compose.yml
    - El dashboard se comunica con api:5000
 
 3. **Modificar docker-compose.yml** para agregar servicio `api`:
-   ```yaml
+   yaml
    api:
      build:
        context: .
@@ -580,7 +581,7 @@ Debes modificar `dashboard/index.html` (es un solo archivo que combina HTML+CSS+
        - bigdata-network
      depends_on:
        - mongodb
-   ```
+   
    - Crear dashboard/Dockerfile.api (Python + Flask + pymongo)
 
 4. **En el JavaScript del dashboard**, reemplazar las URLs estáticas:
@@ -589,7 +590,7 @@ Debes modificar `dashboard/index.html` (es un solo archivo que combina HTML+CSS+
    - Modificar loadPipelineStatus() para leer de pipeline_summary
    
 5. **Agregar nueva pestaña "Streaming"**:
-   ```html
+   html
    <button class="tab-btn" onclick="switchTab('streaming', this)">⚡ Streaming en Vivo</button>
    <div class="tab-content" id="tabStreaming">
      <div class="grid-2">
@@ -617,15 +618,14 @@ Debes modificar `dashboard/index.html` (es un solo archivo que combina HTML+CSS+
        <canvas id="chartPreciosStreaming"></canvas>
      </div>
    </div>
-   ```
-
+   
 6. **Auto-refresh cada 3 segundos** con setInterval:
-   ```javascript
+   javascript
    setInterval(() => {
      loadStreamingData();
      loadPipelineHistory();
    }, 3000);
-   ```
+   
 
 7. **Persistencia de pipeline_summary** (modificar run_pipeline.py si es necesario):
    - Asegurar que cada ejecución guarde su resumen con pipeline_id único
@@ -638,7 +638,7 @@ Debes modificar `dashboard/index.html` (es un solo archivo que combina HTML+CSS+
    - Barras para precios streaming por distrito
    - Tabla de alertas con formato condicional (rojo para críticas, amarillo para warning)
 
-IMPORTANTE: Usa Windows PowerShell (no Bash). No uses &&. El proyecto está en e:\HDD_SHARED_LATO\certus\ciclo 5\bigdata\semana 4\inmuebles_bigdata_aa3_grupo_3
+IMPORTANTE: Usa Windows PowerShell (no Bash). No uses &&. 
 ```
 
 ---
@@ -749,7 +749,7 @@ Tu tarea es producir la documentación completa de AA4:
    - Captura de MongoDB con colecciones streaming
    - Captura del dashboard con datos en vivo
 
-IMPORTANTE: Usa Windows PowerShell (no Bash). No uses &&. El proyecto está en e:\HDD_SHARED_LATO\certus\ciclo 5\bigdata\semana 4\inmuebles_bigdata_aa3_grupo_3
+IMPORTANTE: Usa Windows PowerShell (no Bash). No uses &&. 
 ```
 
 ---
