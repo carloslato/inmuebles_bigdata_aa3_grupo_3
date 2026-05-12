@@ -267,10 +267,30 @@ def step_mongodb_load():
         db = client[MONGO_DB]
         collection = db["propiedades"]
 
-        # Limpiar coleccion anterior e insertar
-        collection.delete_many({})
-        result = collection.insert_many(todos)
-        log(f"Insertados {len(result.inserted_ids)} documentos en MongoDB")
+        # Generar pipeline_id para trazabilidad
+        pipeline_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log(f"Pipeline ID: {pipeline_id}")
+        
+        # Insertar datos preservando historial (upsert por property_id)
+        insertados = 0
+        actualizados = 0
+        for item in todos:
+            item["pipeline_id"] = pipeline_id
+            item["fecha_carga"] = datetime.now().isoformat()
+            # Upsert basado en property_id + portal para evitar duplicados
+            property_id = item.get("property_id", f"{item.get('portal', 'unknown')}_{item.get('url', '')}")
+            result = collection.update_one(
+                {"property_id": property_id},
+                {"$set": item},
+                upsert=True
+            )
+            if result.upserted_id:
+                insertados += 1
+            else:
+                actualizados += 1
+        
+        log(f"Procesados {len(todos)} documentos: {insertados} insertados, {actualizados} actualizados")
+        log(f"Documentos totales en coleccion: {collection.count_documents({})}")
 
         # Crear indices para busquedas rapidas
         collection.create_index("portal")
@@ -565,10 +585,10 @@ def step_mongodb_results():
 
         db = client[MONGO_DB]
 
-        # Guardar resultados de Spark
+        # Guardar resultados de Spark (preservando historial)
         spark_results_dir = os.path.join(OUTPUT_DIR, "spark_results")
         results_collection = db["resultados_analisis"]
-        results_collection.delete_many({})
+        pipeline_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         if os.path.exists(spark_results_dir):
             for fname in os.listdir(spark_results_dir):
@@ -578,6 +598,7 @@ def step_mongodb_results():
                         with open(fpath, "r", encoding="utf-8") as fh:
                             data = json.load(fh)
                         doc = {
+                            "pipeline_id": pipeline_id,
                             "tipo_analisis": fname.replace(".json", ""),
                             "archivo": fname,
                             "fecha": datetime.now().isoformat(),
@@ -588,10 +609,9 @@ def step_mongodb_results():
                     except Exception as e:
                         log(f"  Error guardando {fname}: {e}")
 
-        # Guardar resumen de Hadoop WordCount (top palabras)
+        # Guardar resumen de Hadoop WordCount (top palabras) - preservando historial
         # Buscar en: hadoop_output/ (organizado) o en la raiz de OUTPUT_DIR (donde Hadoop los escribe)
         wordcount_collection = db["wordcount_results"]
-        wordcount_collection.delete_many({})
 
         hadoop_dirs_to_check = [
             os.path.join(OUTPUT_DIR, "hadoop_output"),

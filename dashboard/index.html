@@ -544,8 +544,14 @@
             return;
         }
         const rows = eventos.slice(0, 15).map((item, idx) => {
+            // Manejar estructura anidada del streaming (data.district, data.price, etc.)
+            const data = item.data || {};
             const fecha = item.fecha || item.timestamp || item.fecha_evento || '';
-            return `<tr><td>${idx + 1}</td><td>${item.tipo || item.type || item.evento || 'N/A'}</td><td>${item.distrito || item.district || item.location || 'N/A'}</td><td>${item.precio || item.price || '—'}</td><td>${fecha ? new Date(fecha).toLocaleString('es-PE') : 'N/A'}</td></tr>`;
+            const tipo = item.event_type || item.tipo || item.type || item.evento || 'N/A';
+            const distrito = data.district || item.district || item.distrito || data.location || item.location || 'N/A';
+            const precio = data.price || item.price || item.precio || '—';
+            const formattedPrice = (typeof precio === 'number' && precio > 0) ? `$${Number(precio).toLocaleString('en-US', {minimumFractionDigits:0, maximumFractionDigits:0})}` : '—';
+            return `<tr><td>${idx + 1}</td><td>${tipo}</td><td>${distrito}</td><td>${formattedPrice}</td><td>${fecha ? new Date(fecha).toLocaleString('es-PE') : 'N/A'}</td></tr>`;
         }).join('');
         container.innerHTML = `<div class="table-wrapper"><table class="data-table"><thead><tr><th>#</th><th>Tipo</th><th>Distrito</th><th>Precio</th><th>Fecha</th></tr></thead><tbody>${rows}</tbody></table></div>`;
     }

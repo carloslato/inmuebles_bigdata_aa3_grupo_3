@@ -60,19 +60,37 @@ def get_spark_session():
 
 
 def get_event_schema():
-    """Definir schema para los eventos de Kafka"""
-    # Schema para el campo data (anidado)
+    """Definir schema para los eventos de Kafka - completo con todos los campos del producer"""
+    # Schema para el campo data (anidado) - debe coincidir con kafka_producer.py
     data_schema = StructType([
         StructField("property_id", StringType(), True),
         StructField("title", StringType(), True),
         StructField("price", DoubleType(), True),
+        StructField("currency", StringType(), True),
         StructField("district", StringType(), True),
+        StructField("property_type", StringType(), True),
         StructField("bedrooms", IntegerType(), True),
         StructField("bathrooms", IntegerType(), True),
         StructField("area", DoubleType(), True),
         StructField("url", StringType(), True),
         StructField("portal", StringType(), True),
-        StructField("description", StringType(), True)
+        StructField("description", StringType(), True),
+        # Campos adicionales para eventos específicos
+        StructField("precio_anterior", DoubleType(), True),
+        StructField("variacion_pct", DoubleType(), True),
+        StructField("estado", StringType(), True),
+        StructField("fecha_venta", StringType(), True),
+        StructField("precio_venta", DoubleType(), True),
+        StructField("destacado", StringType(), True),
+        StructField("tipo_destacado", StringType(), True),
+        StructField("dias_destacado", IntegerType(), True),
+        StructField("costo_destacado", IntegerType(), True),
+        # Campos para consulta_usuario
+        StructField("user_id", StringType(), True),
+        StructField("tipo_consulta", StringType(), True),
+        StructField("filtros", StringType(), True),  # JSON string
+        StructField("resultados_mostrados", IntegerType(), True),
+        StructField("propiedades_clickeadas", IntegerType(), True)
     ])
     
     # Schema principal del evento
@@ -80,7 +98,8 @@ def get_event_schema():
         StructField("event_id", StringType(), True),
         StructField("event_type", StringType(), True),
         StructField("timestamp", TimestampType(), True),
-        StructField("data", data_schema, True)
+        StructField("data", data_schema, True),
+        StructField("metadata", StringType(), True)  # JSON string
     ])
     
     return event_schema
