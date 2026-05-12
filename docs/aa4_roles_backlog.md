@@ -222,15 +222,15 @@ Crear un productor de eventos simulados en Kafka que genere entre 1,000 y 3,000 
 
 ### ✅ Backlog / Checklist
 
-- [ ] 2.1 Definir 4+ tipos de eventos inmobiliarios
-- [ ] 2.2 Definir 2+ reglas de alerta
-- [ ] 2.3 Crear `pipeline/kafka_producer.py` con la simulación de eventos
-- [ ] 2.4 Enviar eventos al topic `inmuebles_events`
-- [ ] 2.5 Generar entre 1,000 y 3,000 eventos
-- [ ] 2.6 Incluir timestamp y metadata en cada evento
-- [ ] 2.7 Probar que los eventos llegan a Kafka (consumer de prueba)
-- [ ] 2.8 Integrar el productor en el pipeline (nuevo step en run_pipeline.py)
-- [ ] 2.9 Hacer commit con mensaje: `[Rol 2] Productor de eventos Kafka implementado`
+- [x] 2.1 Definir 4+ tipos de eventos inmobiliarios
+- [x] 2.2 Definir 2+ reglas de alerta
+- [x] 2.3 Crear `pipeline/kafka_producer.py` con la simulación de eventos
+- [x] 2.4 Enviar eventos al topic `inmuebles_events`
+- [x] 2.5 Generar entre 1,000 y 3,000 eventos
+- [x] 2.6 Incluir timestamp y metadata en cada evento
+- [x] 2.7 Probar que los eventos llegan a Kafka (consumer de prueba)
+- [x] 2.8 Integrar el productor en el pipeline (nuevo step en run_pipeline.py)
+- [x] 2.9 Hacer commit con mensaje: `[Rol 2] Productor de eventos Kafka implementado`
 
 ### 💻 Prompt para IA (Copia y pega esto como contexto para tu asistente IA)
 
@@ -344,21 +344,21 @@ Crear un job de Spark Structured Streaming que lea desde Kafka, procese los even
 
 ### ✅ Backlog / Checklist
 
-- [ ] 3.1 Leer documentación de Spark Structured Streaming + Kafka
-- [ ] 3.2 Verificar que Spark tenga el jar `spark-sql-kafka` (o usar `--packages`)
-- [ ] 3.3 Crear `pipeline/spark_streaming.py` 
-- [ ] 3.4 Leer stream desde Kafka (topic: `inmuebles_events`)
-- [ ] 3.5 Parsear eventos JSON con from_json() y schema explícito
-- [ ] 3.6 Aplicar transformaciones con DataFrames y Spark SQL
-- [ ] 3.7 Generar resúmenes streaming (mínimo 2):
+- [x] 3.1 Leer documentación de Spark Structured Streaming + Kafka
+- [x] 3.2 Verificar que Spark tenga el jar `spark-sql-kafka` (o usar `--packages`)
+- [x] 3.3 Crear `pipeline/spark_streaming.py` 
+- [x] 3.4 Leer stream desde Kafka (topic: `inmuebles_events`)
+- [x] 3.5 Parsear eventos JSON con from_json() y schema explícito
+- [x] 3.6 Aplicar transformaciones con DataFrames y Spark SQL
+- [x] 3.7 Generar resúmenes streaming (mínimo 2):
       - Resumen 1: Conteo de eventos por tipo cada 10 segundos (tumbling window)
       - Resumen 2: Precio promedio de propiedades por distrito en ventana deslizante
-- [ ] 3.8 Detectar alertas y escribirlas a MongoDB (colección `alertas_streaming`)
-- [ ] 3.9 Escribir eventos procesados a MongoDB (colección `eventos_streaming`)
-- [ ] 3.10 Usar al menos una operación con RDD (por ejemplo, para transformación personalizada)
-- [ ] 3.11 Configurar output mode (append/update/complete según corresponda)
-- [ ] 3.12 Integrar en run_pipeline.py como step opcional/paralelo
-- [ ] 3.13 Hacer commit con mensaje: `[Rol 3] Spark Structured Streaming con Kafka implementado`
+- [x] 3.8 Detectar alertas y escribirlas a MongoDB (colección `alertas_streaming`)
+- [x] 3.9 Escribir eventos procesados a MongoDB (colección `eventos_streaming`)
+- [x] 3.10 Usar al menos una operación con RDD (por ejemplo, para transformación personalizada)
+- [x] 3.11 Configurar output mode (append/update/complete según corresponda)
+- [x] 3.12 Integrar en run_pipeline.py como step opcional/paralelo
+- [x] 3.13 Hacer commit con mensaje: `[Rol 3] Spark Structured Streaming con Kafka implementado`
 
 ### 💻 Prompt para IA (Copia y pega esto como contexto para tu asistente IA)
 
