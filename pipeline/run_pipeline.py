@@ -561,9 +561,22 @@ def step_mongodb_results():
 
         # Generar documento de resumen del pipeline
         status = __import__("status_manager", fromlist=["get_status"]).get_status()
+        started_at = status.get("started_at")
+        completed_at = status.get("completed_at")
+        duration_seconds = None
+        if started_at and completed_at:
+            try:
+                duration_seconds = (datetime.fromisoformat(completed_at) - datetime.fromisoformat(started_at)).total_seconds()
+            except Exception:
+                duration_seconds = None
+
         summary_doc = {
             "pipeline_id": datetime.now().strftime("%Y%m%d_%H%M%S"),
+            "fecha": datetime.now().isoformat(),
             "fecha_ejecucion": datetime.now().isoformat(),
+            "started_at": started_at,
+            "completed_at": completed_at,
+            "duration_seconds": duration_seconds,
             "estado": status.get("pipeline", "unknown"),
             "stats": status.get("stats", {}),
             "steps": status.get("steps", [])

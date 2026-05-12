@@ -1,0 +1,14 @@
+FROM python:3.11-slim-bookworm
+
+WORKDIR /app
+
+COPY pipeline/requirements.txt /tmp/requirements.txt
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gcc \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir -r /tmp/requirements.txt
+
+COPY dashboard/api_server.py /app/api_server.py
+
+EXPOSE 5000
+CMD ["python", "api_server.py"]
