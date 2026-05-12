@@ -26,3 +26,5 @@ pyee>=11.0.0
 # Dependencias del pipeline
 pymongo>=4.5.0
 pandas>=2.0.0
+Flask>=2.3.0
+flask-cors>=3.0.0

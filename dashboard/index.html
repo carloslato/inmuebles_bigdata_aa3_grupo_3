@@ -126,6 +126,12 @@
             border-radius: 8px;
             border: 1px solid #e0e0e0;
         }
+        .history-table th, .history-table td {
+            padding: 10px 12px;
+        }
+        .history-table tr.latest-row { background: rgba(0, 188, 212, 0.08); }
+        .alert-critical { background: rgba(244,67,54,0.12); color: #b71c1c; }
+        .alert-warning { background: rgba(255,152,0,0.14); color: #e65100; }
         
         .tab-bar {
             display: flex;
@@ -229,6 +235,17 @@
             </div>
         </div>
         
+        <!-- Pipeline History -->
+        <div class="pipeline-card" id="pipelineHistory">
+            <div class="flex flex-between items-center">
+                <h2>📚 Historial de Pipelines</h2>
+                <button class="refresh-btn" onclick="loadPipelineHistory()">🔄 Refrescar historial</button>
+            </div>
+            <div id="historyContent">
+                <div class="loading">⏳ Cargando historial de pipeline...</div>
+            </div>
+        </div>
+
         <!-- Stats Overview -->
         <div class="grid-3 mb-10" id="statsOverview">
             <div class="card" id="statTotal"><h3>📊 Propiedades</h3><div class="loading">...</div></div>
@@ -248,6 +265,7 @@
                 <button class="tab-btn" onclick="switchTab('ubicaciones', this)">📍 Ubicaciones</button>
                 <button class="tab-btn" onclick="switchTab('caracteristicas', this)">🏠 Características</button>
                 <button class="tab-btn" onclick="switchTab('portales', this)">🌐 Portales</button>
+                <button class="tab-btn" onclick="switchTab('streaming', this)">⚡ Streaming en Vivo</button>
                 <button class="tab-btn" onclick="switchTab('palabras', this)">📝 Palabras Clave</button>
                 <button class="tab-btn" onclick="switchTab('datos', this)">🗃️ Datos RAW</button>
             </div>
@@ -287,6 +305,34 @@
                     <div class="card"><h3>🏷️ Top Distritos por Portal</h3><div class="table-wrapper" id="tablaDistritosPortal"><div class="loading">Cargando...</div></div></div>
                 </div>
             </div>
+
+            <!-- Tab: Streaming -->
+            <div class="tab-content" id="tabStreaming">
+                <div class="grid-2">
+                    <div class="card">
+                        <h3>⚡ Eventos en Tiempo Real</h3>
+                        <div id="eventosLive"><div class="loading">Esperando eventos...</div></div>
+                    </div>
+                    <div class="card">
+                        <h3>📊 Resumen por Tipo</h3>
+                        <div class="chart-container"><canvas id="chartEventosTipo"></canvas></div>
+                    </div>
+                </div>
+                <div class="grid-2 mt-10">
+                    <div class="card">
+                        <h3>🔔 Alertas Recientes</h3>
+                        <div id="alertasLive"><div class="loading">Sin alertas...</div></div>
+                    </div>
+                    <div class="card">
+                        <h3>📈 Tasa de Eventos</h3>
+                        <div class="chart-container"><canvas id="chartTasaEventos"></canvas></div>
+                    </div>
+                </div>
+                <div class="card mt-10">
+                    <h3>🏷️ Precios Streaming por Distrito</h3>
+                    <div class="chart-container"><canvas id="chartPreciosStreaming"></canvas></div>
+                </div>
+            </div>
             
             <!-- Tab: Palabras Clave -->
             <div class="tab-content" id="tabPalabras">
@@ -319,12 +365,22 @@
     </div>
     
     <script>
-    // Configuración - el dashboard carga datos del directorio de salida compartido
+    // Configuración - el dashboard carga datos desde la API y archivos estáticos cuando es necesario
+    const API_URL = '/api';
     const DATA_URL = '/data';
-    const STATUS_URL = '/data/pipeline_status.json';
     const SPARK_RESULTS_URL = '/data/spark_results';
     
     let charts = {};
+    
+    async function loadFromMongo(collection) {
+        const url = `${API_URL}/${collection}`;
+        return await fetchJSON(url);
+    }
+    
+    async function loadLatestFromMongo(collection) {
+        const url = `${API_URL}/${collection}/latest`;
+        return await fetchJSON(url);
+    }
     
     // ===== HELPERS =====
     async function fetchJSON(url) {
@@ -358,14 +414,16 @@
     
     // ===== PIPELINE STATUS =====
     async function loadPipelineStatus() {
-        const status = await fetchJSON(STATUS_URL);
+        const latest = await loadLatestFromMongo('pipeline_summary');
         const container = document.getElementById('pipelineContent');
         
-        if (!status || !status.steps) {
+        if (!latest || latest.length === 0) {
             container.innerHTML = `<div class="loading">⏳ Pipeline no iniciado o datos no disponibles</div>`;
             return;
         }
-        
+        const status = latest[0];
+        const pipelineState = status.estado || status.pipeline || 'not_started';
+
         const statusColors = {
             'running': 'badge-running',
             'completed': 'badge-completed',
@@ -391,33 +449,39 @@
             'mongodb_results': '💾'
         };
         
-        let html = `<span class="pipeline-status-badge ${statusColors[status.pipeline] || 'badge-not_started'}">${statusLabels[status.pipeline] || '❓ Desconocido'}</span>`;
-        
+        let html = `<span class="pipeline-status-badge ${statusColors[pipelineState] || 'badge-not_started'}">${statusLabels[pipelineState] || '❓ Desconocido'}</span>`;
+        if (status.fecha) {
+            html += `<span style="font-size:12px;color:#888;margin-left:10px;">Ejecutado: ${new Date(status.fecha).toLocaleString('es-PE')}</span>`;
+        }
         if (status.started_at) {
             html += `<span style="font-size:12px;color:#888;margin-left:10px;">Iniciado: ${new Date(status.started_at).toLocaleString('es-PE')}</span>`;
         }
         if (status.completed_at) {
             html += `<span style="font-size:12px;color:#888;margin-left:10px;">Finalizado: ${new Date(status.completed_at).toLocaleString('es-PE')}</span>`;
         }
+        if (status.duration_seconds !== undefined && status.duration_seconds !== null) {
+            html += `<span style="font-size:12px;color:#888;margin-left:10px;">Duración: ${Math.round(status.duration_seconds)}s</span>`;
+        }
         if (status.error) {
             html += `<div class="error-msg">⚠️ ${status.error}</div>`;
         }
-        
-        html += `<div class="steps-grid mt-10">`;
-        for (const step of status.steps) {
-            const icon = icons[step.name] || '📋';
-            const stepStatus = step.status || 'pending';
-            html += `
-                <div class="step-item step-status-${stepStatus}">
-                    <div class="step-icon">${icon}</div>
-                    <div class="step-label">${step.label}</div>
-                    <div style="font-size:11px;color:#999;margin-top:2px;">${statusLabels[stepStatus]}</div>
-                </div>
-            `;
+
+        if (Array.isArray(status.steps) && status.steps.length > 0) {
+            html += `<div class="steps-grid mt-10">`;
+            for (const step of status.steps) {
+                const icon = icons[step.name] || '📋';
+                const stepStatus = step.status || 'pending';
+                html += `
+                    <div class="step-item step-status-${stepStatus}">
+                        <div class="step-icon">${icon}</div>
+                        <div class="step-label">${step.label || step.name}</div>
+                        <div style="font-size:11px;color:#999;margin-top:2px;">${statusLabels[stepStatus] || stepStatus}</div>
+                    </div>
+                `;
+            }
+            html += `</div>`;
         }
-        html += `</div>`;
         
-        // Stats del pipeline
         if (status.stats && Object.keys(status.stats).length > 0) {
             html += `<div style="margin-top:12px;padding-top:12px;border-top:1px solid #eee;">`;
             html += `<h4 style="font-size:13px;color:#666;margin-bottom:8px;">📊 Estadísticas del Pipeline</h4>`;
@@ -425,16 +489,140 @@
             for (const [key, val] of Object.entries(status.stats)) {
                 if (typeof val === 'number') {
                     html += `<div style="background:#f5f5f5;padding:6px 12px;border-radius:6px;font-size:12px;"><strong>${key}:</strong> ${val.toLocaleString()}</div>`;
-                } else if (typeof val === 'string') {
-                    html += `<div style="background:#f5f5f5;padding:6px 12px;border-radius:6px;font-size:12px;"><strong>${key}:</strong> ${val}</div>`;
+                } else {
+                    html += `<div style="background:#f5f5f5;padding:6px 12px;border-radius:6px;font-size:12px;"><strong>${key}:</strong> ${String(val)}</div>`;
                 }
             }
             html += `</div></div>`;
         }
-        
+
         container.innerHTML = html;
     }
     
+    async function loadPipelineHistory() {
+        const history = await loadFromMongo('pipeline_summary');
+        const container = document.getElementById('historyContent');
+        if (!history || history.length === 0) {
+            container.innerHTML = `<div class="loading">⏳ No hay historial disponible</div>`;
+            return;
+        }
+
+        let html = `<div class="table-wrapper"><table class="data-table history-table"><thead><tr><th>Fecha</th><th>Estado</th><th>Duración</th><th>Stats</th></tr></thead><tbody>`;
+        history.forEach((item, index) => {
+            const fecha = item.fecha || item.fecha_ejecucion || '';
+            const estado = item.estado || item.pipeline || 'desconocido';
+            const duration = item.duration_seconds !== undefined && item.duration_seconds !== null ? `${Math.round(item.duration_seconds)}s` : 'N/A';
+            const stats = item.stats ? Object.entries(item.stats).map(([k, v]) => `${k}: ${v}`).join(' · ') : '-';
+            html += `<tr class="${index === 0 ? 'latest-row' : ''}"><td>${fecha ? new Date(fecha).toLocaleString('es-PE') : 'N/A'}</td><td>${estado}</td><td>${duration}</td><td>${stats}</td></tr>`;
+        });
+        html += `</tbody></table></div>`;
+        container.innerHTML = html;
+    }
+
+    function parseDate(value) {
+        if (!value) return null;
+        const d = new Date(value);
+        return Number.isFinite(d.getTime()) ? d : null;
+    }
+
+    async function loadStreamingData() {
+        const eventos = await loadFromMongo('eventos_streaming');
+        const alertas = await loadFromMongo('alertas_streaming');
+        const resumen = await loadFromMongo('resumen_eventos_streaming');
+
+        renderStreamingEvents(eventos);
+        renderAlertas(alertas);
+        renderEventosTipo(eventos, resumen);
+        renderTasaEventos(resumen);
+        renderPreciosStreaming(eventos);
+    }
+
+    function renderStreamingEvents(eventos) {
+        const container = document.getElementById('eventosLive');
+        if (!eventos || eventos.length === 0) {
+            container.innerHTML = `<div class="loading">Esperando eventos...</div>`;
+            return;
+        }
+        const rows = eventos.slice(0, 15).map((item, idx) => {
+            const fecha = item.fecha || item.timestamp || item.fecha_evento || '';
+            return `<tr><td>${idx + 1}</td><td>${item.tipo || item.type || item.evento || 'N/A'}</td><td>${item.distrito || item.district || item.location || 'N/A'}</td><td>${item.precio || item.price || '—'}</td><td>${fecha ? new Date(fecha).toLocaleString('es-PE') : 'N/A'}</td></tr>`;
+        }).join('');
+        container.innerHTML = `<div class="table-wrapper"><table class="data-table"><thead><tr><th>#</th><th>Tipo</th><th>Distrito</th><th>Precio</th><th>Fecha</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    }
+
+    function renderAlertas(alertas) {
+        const container = document.getElementById('alertasLive');
+        if (!alertas || alertas.length === 0) {
+            container.innerHTML = `<div class="loading">Sin alertas recientes</div>`;
+            return;
+        }
+        const rows = alertas.slice(0, 12).map(item => {
+            const nivel = (item.nivel || item.severity || item.tipo || '').toString().toLowerCase();
+            const clase = nivel.includes('crit') || nivel.includes('alta') || nivel.includes('critical') ? 'alert-critical'
+                : nivel.includes('warn') || nivel.includes('medium') ? 'alert-warning' : '';
+            const mensaje = item.mensaje || item.message || item.descripcion || 'Alerta';
+            const fecha = item.fecha || item.timestamp || item.fecha_alerta || '';
+            return `<tr class="${clase}"><td>${mensaje}</td><td>${nivel || 'info'}</td><td>${fecha ? new Date(fecha).toLocaleString('es-PE') : 'N/A'}</td></tr>`;
+        }).join('');
+        container.innerHTML = `<div class="table-wrapper"><table class="data-table"><thead><tr><th>Alerta</th><th>Nivel</th><th>Fecha</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    }
+
+    function renderEventosTipo(eventos, resumen) {
+        const counts = {};
+        if (resumen && resumen.length) {
+            resumen.forEach(item => {
+                const tipo = item.tipo || item.category || item.evento || 'Desconocido';
+                counts[tipo] = (counts[tipo] || 0) + (item.cantidad || item.count || 1);
+            });
+        }
+        if (eventos && eventos.length) {
+            eventos.forEach(item => {
+                const tipo = item.tipo || item.type || item.evento || 'Desconocido';
+                counts[tipo] = (counts[tipo] || 0) + 1;
+            });
+        }
+        const labels = Object.keys(counts).slice(0, 10);
+        const data = labels.map(key => counts[key]);
+        if (labels.length) {
+            createDoughnutChart('chartEventosTipo', labels, data, 'Eventos por Tipo');
+        }
+    }
+
+    function renderTasaEventos(resumen) {
+        const points = [];
+        if (resumen && resumen.length) {
+            resumen.slice(0, 20).reverse().forEach(item => {
+                const fecha = parseDate(item.fecha || item.timestamp || item.created_at);
+                if (!fecha) return;
+                const valor = Number(item.tasa || item.rate || item.count || item.cantidad || 0);
+                points.push({x: fecha, y: valor});
+            });
+        }
+        if (points.length) {
+            createLineChart('chartTasaEventos', points, 'Eventos por minuto');
+        }
+    }
+
+    function renderPreciosStreaming(eventos) {
+        const districts = {};
+        if (eventos && eventos.length) {
+            eventos.forEach(item => {
+                const distrito = item.distrito || item.district || item.location || 'N/A';
+                const precio = Number(item.precio || item.price || item.valor || 0);
+                if (!precio || precio <= 0) return;
+                if (!districts[distrito]) districts[distrito] = {total: 0, count: 0};
+                districts[distrito].total += precio;
+                districts[distrito].count += 1;
+            });
+        }
+        const values = Object.entries(districts).map(([key, value]) => ({distrito: key, average: value.total / value.count}));
+        values.sort((a, b) => b.average - a.average);
+        const top = values.slice(0, 12);
+        if (top.length) {
+            createBarChart('chartPreciosStreaming', top.map(d => d.distrito), top.map(d => Math.round(d.average)), 'Precio promedio ($)', getColor(1, 0.7));
+        }
+    }
+
     // ===== STATS OVERVIEW =====
     async function loadStatsOverview() {
         const stats = await fetchJSON(`${SPARK_RESULTS_URL}/estadisticas_globales.json`);
@@ -718,6 +906,48 @@
             }
         });
     }
+
+    function createLineChart(canvasId, points, label) {
+        destroyChart(canvasId);
+        const ctx = document.getElementById(canvasId)?.getContext('2d');
+        if (!ctx) return;
+        
+        const labels = points.map(p => {
+            if (p.x instanceof Date) {
+                return p.x.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+            }
+            return String(p.x || '');
+        });
+        const values = points.map(p => Number(p.y || 0));
+
+        charts[canvasId] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: label,
+                    data: values,
+                    borderColor: getColor(6, 0.85),
+                    backgroundColor: getColor(6, 0.25),
+                    fill: true,
+                    tension: 0.35,
+                    pointRadius: 3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { title: { display: true, text: 'Hora' }, ticks: { autoSkip: true, maxRotation: 45 } },
+                    y: { title: { display: true, text: 'Eventos' }, beginAtZero: true, ticks: { callback: v => Number(v).toLocaleString() } }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { mode: 'index', intersect: false }
+                }
+            }
+        });
+    }
     
     // ===== TABS =====
     function switchTab(tabName, btn) {
@@ -729,6 +959,7 @@
             'ubicaciones': 'tabUbicaciones',
             'caracteristicas': 'tabCaracteristicas',
             'portales': 'tabPortales',
+            'streaming': 'tabStreaming',
             'palabras': 'tabPalabras',
             'datos': 'tabDatos'
         };
@@ -749,8 +980,8 @@
         ]);
         
         // Auto-refresh every 15s if pipeline is running
-        const status = await fetchJSON(STATUS_URL);
-        if (status && status.pipeline === 'running') {
+        const latest = await loadLatestFromMongo('pipeline_summary');
+        if (latest && latest[0] && (latest[0].estado === 'running' || latest[0].pipeline === 'running')) {
             setTimeout(refreshAll, 15000);
         }
     }
@@ -758,6 +989,12 @@
     // ===== INIT =====
     document.addEventListener('DOMContentLoaded', async () => {
         await refreshAll();
+        await loadPipelineHistory();
+        await loadStreamingData();
+        setInterval(() => {
+            loadStreamingData();
+            loadPipelineHistory();
+        }, 3000);
     });
     </script>
 </body>
