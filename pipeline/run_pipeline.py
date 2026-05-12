@@ -8,10 +8,11 @@ Flujo:
 1. Ejecutar scraper → JSON
 2. Transformar JSON → CSV y descripciones MD
 3. Cargar datos a MongoDB
-4. Ejecutar Hadoop WordCount sobre descripciones
-5. Ejecutar Spark Structured Streaming desde Kafka
-6. Ejecutar Spark para análisis de datos (batch)
-7. Guardar resultados en MongoDB
+4. Generar eventos en Kafka (producer)
+5. Ejecutar Hadoop WordCount sobre descripciones
+6. Ejecutar Spark Structured Streaming desde Kafka
+7. Ejecutar Spark para análisis de datos (batch)
+8. Guardar resultados en MongoDB
 
 Este script se ejecuta dentro del contenedor 'pipeline' de Docker.
 """
@@ -296,15 +297,43 @@ def step_mongodb_load():
         return False, {}
 
 
+def step_kafka_events():
+    """Step 4: Generar eventos de Kafka para simulación en tiempo real"""
+    log("=" * 60)
+    log("STEP 4/8: Generando eventos inmobiliarios en Kafka (Producer)")
+    log("=" * 60)
+    start_step("kafka_events")
+
+    try:
+        from kafka_producer import run_producer
+
+        # Configuración desde variables de entorno o valores por defecto
+        num_events = int(os.environ.get("KAFKA_NUM_EVENTS", "1500"))
+        delay = float(os.environ.get("KAFKA_EVENT_DELAY", "0.1"))
+
+        log(f"Configuración: {num_events} eventos, delay={delay}s")
+
+        # Ejecutar productor
+        stats = run_producer(num_events=num_events, delay=delay)
+
+        complete_step("kafka_events", stats)
+        return True, stats
+
+    except Exception as e:
+        log(f"  [FAIL] Kafka events error: {e}")
+        fail_step("kafka_events", str(e))
+        return False, {}
+
+
 def step_hadoop_wordcount():
     """
-    Step 4: Wait for Hadoop WordCount to complete
+    Step 5: Wait for Hadoop WordCount to complete
     Hadoop se ejecuta en su propio contenedor (namenode) y escribe
     directamente en /host_output/ que es la raiz de pipeline_output/.
     Buscamos el archivo .hadoop_complete como senal de finalizacion.
     """
     log("=" * 60)
-    log("STEP 4/7: Hadoop WordCount sobre descripciones")
+    log("STEP 5/8: Hadoop WordCount sobre descripciones")
     log("=" * 60)
     start_step("hadoop_wordcount")
 
@@ -381,9 +410,9 @@ def step_hadoop_wordcount():
 
 
 def step_spark_streaming():
-    """Step 5: Ejecutar Spark Structured Streaming"""
+    """Step 6: Ejecutar Spark Structured Streaming"""
     log("=" * 60)
-    log("STEP 5/7: Spark Structured Streaming desde Kafka")
+    log("STEP 6/8: Spark Structured Streaming desde Kafka")
     log("=" * 60)
     start_step("spark_streaming")
 
@@ -450,9 +479,9 @@ def step_spark_streaming():
 
 
 def step_spark_analysis():
-    """Step 6: Run Spark analysis"""
+    """Step 7: Run Spark analysis"""
     log("=" * 60)
-    log("STEP 6/7: Analisis con Spark (batch)")
+    log("STEP 7/8: Analisis con Spark (batch)")
     log("=" * 60)
     start_step("spark_analysis")
 
@@ -511,9 +540,9 @@ def step_spark_analysis():
 
 
 def step_mongodb_results():
-    """Step 7: Save analysis results to MongoDB"""
+    """Step 8: Save analysis results to MongoDB"""
     log("=" * 60)
-    log("STEP 7/7: Guardando resultados de analisis en MongoDB")
+    log("STEP 8/8: Guardando resultados de analisis en MongoDB")
     log("=" * 60)
     start_step("mongodb_results")
 
@@ -704,7 +733,7 @@ def main():
         log("Pipeline detenido por error en scraper")
         all_success = False
 
-    # Steps 2-7 solo si todo va bien
+    # Steps 2-8 solo si todo va bien
     if all_success:
         log("\n")
         success, stats = step_extract_csv()
@@ -718,6 +747,15 @@ def main():
         all_stats.update(stats)
         if not success:
             all_success = False
+
+    # Step 4: Kafka Events (nuevo step entre MongoDB y Hadoop)
+    if all_success:
+        log("\n")
+        success, stats = step_kafka_events()
+        all_stats.update(stats)
+        # Kafka events no es critico, continuar incluso si falla
+        if not success:
+            log("[WARN] Kafka events fallo pero el pipeline continua...")
 
     if all_success:
         log("\n")
