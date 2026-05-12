@@ -1,314 +1,177 @@
-# 🏢 Proyecto Inmobiliario Big Data
+# 🏠 Análisis de Mercado Inmobiliario — Ecosistema Big Data (AA4)
 
-**Pipeline completo de Big Data para análisis de mercado inmobiliario**
-
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker)](https://docker.com)
-[![Hadoop](https://img.shields.io/badge/Hadoop-3.2.1-66CCFF?logo=apachehadoop)](https://hadoop.apache.org)
-[![Spark](https://img.shields.io/badge/Spark-3.5.0-E25A1C?logo=apachespark)](https://spark.apache.org)
-[![MongoDB](https://img.shields.io/badge/MongoDB-7.0-47A248?logo=mongodb)](https://mongodb.com)
-[![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python)](https://python.org)
+> Proyecto académico del Grupo 3 — Análisis de datos del mercado inmobiliario peruano usando un ecosistema Big Data completo con procesamiento batch y streaming en tiempo real.
 
 ---
 
 ## 📋 Descripción
 
-Este proyecto implementa un **flujo completo de Big Data** para analizar datos del mercado inmobiliario de Lima, Perú. El pipeline integra:
+Este proyecto implementa un ecosistema Big Data end-to-end para el análisis del mercado inmobiliario peruano. Integra scraping de múltiples portales, procesamiento distribuido con Apache Spark (batch y streaming), mensajería con Apache Kafka, almacenamiento NoSQL con MongoDB y visualización mediante dashboards interactivos.
 
-| Herramienta | Propósito |
-|-------------|-----------|
-| 🕸️ **Scraper** | Extrae ~18,000 propiedades de 3 portales inmobiliarios (Python + Scrapling) |
-| 🐘 **Hadoop** | Procesamiento MapReduce (WordCount) sobre descripciones de propiedades |
-| ⚡ **Spark** | Análisis de precios, ubicaciones, correlaciones y palabras clave (PySpark) |
-| 🗄️ **MongoDB** | Almacenamiento de datos crudos y resultados de análisis |
-| 📊 **Dashboard** | Visualización interactiva con charts, nube de palabras y estado del pipeline |
+**AA4** extiende el sistema AA3 incorporando:
 
-**Todo se ejecuta automáticamente con un solo `docker compose up`.**
+- ✅ Procesamiento en **tiempo real** con Kafka + Spark Structured Streaming
+- ✅ **Dashboard en vivo** con actualización automática de eventos
+- ✅ **Historial de pipelines** con métricas por ejecución
+- ✅ **Sistema de alertas** automáticas por anomalías de precio o demanda
 
 ---
 
-## 🚀 Quick Start
+## 🏗️ Arquitectura
 
-### Requisitos
+```
+Fuentes Históricas          Flujo Batch
+─────────────────           ───────────
+JSON / CSV / MD   ──────►  Spark Batch ──► MongoDB ──► Dashboard
+                                       ──► HDFS
 
-- **Docker** 24+ y **Docker Compose** v2+
-- Al menos **8 GB RAM** disponible para los contenedores
-- **10 GB espacio libre** en disco
-
-### Ejecución
-
-```bash
-# 1. Clonar el repositorio
-cd inmuebles_bigdata_aa3_grupo_3
-
-# 2. Crear directorio de salida (output de pipeline)
-mkdir -p pipeline_output
-
-# 3. Levantar todo (se construye la imagen del pipeline automáticamente)
-docker compose up --build -d
-
-# 4. Ver logs del pipeline (se ejecuta automáticamente)
-docker compose logs -f pipeline
-
-# 5. Abrir el dashboard
-#    → http://localhost:8080
+Simulador Eventos           Flujo Streaming
+─────────────────           ───────────────
+Python Script     ──────►  Kafka ──► Spark Streaming ──► MongoDB ──► Dashboard Live
 ```
 
-### Ver resultados de cada componente
-
-```bash
-# Estado del pipeline en tiempo real
-docker compose logs -f pipeline
-
-# Hadoop NameNode UI
-# → http://localhost:9870
-
-# Dashboard (cuando el pipeline termina)
-# → http://localhost:8080
-
-# MongoDB (directamente)
-docker exec -it mongodb mongosh inmuebles
-```
+Ver diagrama completo en [`docs/arquitectura_aa4.md`](docs/arquitectura_aa4.md)
 
 ---
 
-## 🏗️ Arquitectura del Pipeline
+## 🛠️ Tecnologías
 
-```
-docker compose up
-       │
-       ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     PIPELINE DE BIG DATA                        │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌──────────────────┐                                           │
-│  │  STEP 1: Scraper  │  Extrae datos de portales → JSON        │
-│  │  (Python/Scrapl.) │  ~18,000 propiedades                    │
-│  └────────┬─────────┘                                           │
-│           ▼                                                     │
-│  ┌──────────────────┐                                           │
-│  │ STEP 2: Transform│  JSON → CSV + Descripciones MD           │
-│  │ (Python/Pandas)  │  CSV a Hadoop input-data                 │
-│  └────────┬─────────┘  MD con descripciones                    │
-│           ▼                                                     │
-│  ┌──────────────────┐                                           │
-│  │STEP 3: MongoDB   │  Carga datos crudos a MongoDB            │
-│  │ (PyMongo)        │  Colección: propiedades                  │
-│  └────────┬─────────┘  Índices: portal, precio, ubicacion      │
-│           ▼                                                     │
-│  ┌──────────────────┐                                           │
-│  │STEP 4: Hadoop    │  WordCount sobre descripciones           │
-│  │ (MapReduce/Java) │  HDFS → Procesa → Resultados → JSON     │
-│  └────────┬─────────┘                                          │
-│           ▼                                                     │
-│  ┌──────────────────┐                                           │
-│  │STEP 5: Spark     │  8 análisis diferentes:                  │
-│  │ (PySpark)        │  ├ Precios por distrito                  │
-│  │                  │  ├ Distribución monedas                  │
-│  │                  │  ├ Dormitorios/baños                     │
-│  │                  │  ├ Área vs precio                        │
-│  │                  │  ├ Comparación portales                  │
-│  │                  │  ├ Top distritos por portal              │
-│  │                  │  ├ Rangos de precio                      │
-│  │                  │  └ Palabras frecuentes                   │
-│  └────────┬─────────┘                                          │
-│           ▼                                                     │
-│  ┌──────────────────┐                                           │
-│  │STEP 6: Resultados│  Guarda todo en MongoDB                  │
-│  │ (PyMongo)        │  Colecciones: resultados_analisis,       │
-│  └──────────────────┘  wordcount_results, pipeline_summary     │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-           │
-           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    DASHBOARD (http://localhost:8080)             │
-│                                                                 │
-│  🔁 Estado del Pipeline en vivo (6 steps)                      │
-│  📊 3 tarjetas de resumen (propiedades, precio, distritos)     │
-│  📈 6 tabs con 12 charts y tablas interactivas:                │
-│     ├ 💰 Precios (distrito, rango, moneda, área vs precio)    │
-│     ├ 📍 Ubicaciones (top distritos, precio por distrito)     │
-│     ├ 🏠 Características (dormitorios, baños)                 │
-│     ├ 🌐 Portales (comparación, top distritos por portal)     │
-│     ├ 📝 Palabras Clave (nube, WordCount Hadoop)              │
-│     └ 🗃️ Datos RAW (preview de datos, MongoDB)               │
-└─────────────────────────────────────────────────────────────────┘
-```
+| Tecnología           | Versión | Rol                                 |
+| -------------------- | ------- | ----------------------------------- |
+| 🔥 Apache Spark      | 3.x     | Procesamiento batch y streaming     |
+| 📨 Apache Kafka      | 3.x     | Mensajería y streaming de eventos   |
+| 🐘 Apache Hadoop     | 3.x     | Almacenamiento HDFS                 |
+| 🍃 MongoDB           | 6.x     | Base de datos NoSQL                 |
+| 🐍 Python            | 3.10+   | Scrapers, productores, orquestación |
+| 🐳 Docker Compose    | Latest  | Contenedorización                   |
+| 📊 Matplotlib / Dash | Latest  | Visualizaciones y dashboard         |
 
 ---
 
 ## 📁 Estructura del Proyecto
 
 ```
-inmuebles_bigdata_aa3_grupo_3/
+proyecto-inmobiliario/
 │
-├── docker-compose.yml              ← Orquestador principal
-├── .dockerignore
+├── data/                          # Archivos de datos
+│   ├── inmuebles_adondevivir.json # ~1,800 registros scrapeados
+│   ├── inmuebles_infocasas.json   # ~450 registros scrapeados
+│   ├── inmuebles_laencontre.json  # ~320 registros scrapeados
+│   ├── inmuebles_todos.json       # Dataset consolidado (~2,570)
+│   ├── inmuebles.csv              # Input Spark Batch
+│   └── descripciones_*.md         # Archivos descriptivos para Hadoop
 │
-├── apache-hadoop/                  ← Cluster Hadoop (clase 1)
-│   ├── docker-compose.yml          ← (original, no usar)
-│   ├── namenode_entrypoint.sh      ← Entrypoint con wait + WordCount + JSON
-│   ├── hadoop.env                  ← Configuración Hadoop
-│   ├── src/WordCount.java          ← Código MapReduce
-│   ├── input-data/                 ← Datos de entrada (pipeline escribe aquí)
-│   └── ...
+├── src/
+│   ├── scrapers/                  # Scripts de scraping por portal
+│   ├── kafka/
+│   │   ├── producer.py            # Productor de eventos Kafka
+│   │   └── consumer.py            # Consumidor (referencia)
+│   ├── spark/
+│   │   ├── batch_analysis.py      # Pipeline batch principal
+│   │   └── streaming_analysis.py  # Pipeline streaming Kafka
+│   ├── mongodb/
+│   │   └── mongo_loader.py        # Carga y consultas MongoDB
+│   └── dashboard/
+│       ├── dashboard_batch.py     # Dashboard análisis histórico
+│       └── dashboard_live.py      # Dashboard en tiempo real
 │
-├── scrape-data/                    ← Scraper (clase 1 - funcional)
-│   ├── main.py                     ← 3 spiders (AdondeVivir, LaEncontre, InfoCasas)
-│   ├── requirements.txt
-│   └── docs/scraper_documentacion.md
+├── docs/
+│   ├── arquitectura_aa4.md        # Diagrama y descripción de arquitectura
+│   ├── grupo4_Evidencia4.md       # Informe completo AA4
+│   ├── indicaciones_aa4.md        # Lista de verificación del profesor
+│   ├── informe_instrucciones.md   # Instructivo del informe
+│   └── evidencias/                # Capturas de funcionamiento
 │
-├── spark/                          ← Apuntes de clase (Spark)
-│   └── clase-5-spark.md
-│
-├── pipeline/                       ← Contenedor orquestador
-│   ├── Dockerfile                  ← Imagen con Spark + Python + Scrapling
-│   ├── requirements.txt
-│   ├── run_pipeline.py             ← Orquestador de 6 pasos
-│   ├── status_manager.py           ← Estado del pipeline para dashboard
-│   └── spark_analysis.py           ← 8 análisis con PySpark
-│
-├── dashboard/                      ← Dashboard web
-│   ├── index.html                  ← HTML + JS con Chart.js
-│   └── nginx.conf                  ← Sirve dashboard + /data/ (outputs)
-│
-└── pipeline_output/                ← Output compartido (bind mount)
-    ├── pipeline_status.json        ← Estado en vivo del pipeline
-    ├── json/                       ← JSONs del scraper
-    ├── csv/inmuebles.csv           ← Datos estructurados para Spark
-    ├── descriptions/               ← Archivos .md para Hadoop
-    ├── hadoop_output/              ← Resultados WordCount
-    ├── spark_results/              ← Resultados de Spark (JSONs)
-    └── pipeline_report.json        ← Reporte final
+├── docker-compose.yml             # Orquestación de contenedores
+├── run_pipeline.py                # Script principal de ejecución
+└── README.md
 ```
 
 ---
 
-## 🔬 Análisis Realizados
+## 🚀 Instrucciones de Ejecución
 
-### Spark (8 análisis)
+### Prerrequisitos
 
-| Análisis | Archivo | Descripción |
-|----------|---------|-------------|
-| Precios por distrito | `precios_por_distrito.json` | Cantidad, promedio, min, max, desviación por distrito |
-| Distribución moneda | `precios_por_moneda.json` | PEN vs USD |
-| Distribución dormitorios | `distribucion_dormitorios.json` | Cantidad y precio por # dormitorios |
-| Distribución baños | `distribucion_banios.json` | Cantidad y precio por # baños |
-| Área vs Precio | `area_vs_precio.json` | Correlación scatter |
-| Comparación portales | `comparacion_portales.json` | Estadísticas por portal |
-| Top distritos/portal | `top_distritos_por_portal.json` | Ranking por portal |
-| Palabras frecuentes | `palabras_frecuentes_descripciones.json` | Top 200 palabras |
-| Rangos de precio | `distribucion_rangos_precio.json` | Segmentación en 7 rangos |
-| Estadísticas globales | `estadisticas_globales.json` | Resumen general |
+- Docker Desktop instalado y corriendo
+- Python 3.10+
+- PowerShell (Windows)
 
-### Hadoop
+### 1. Levantar el ecosistema
 
-- **WordCount** sobre descripciones de propiedades (archivos .md)
-- Resultados ordenados por frecuencia descendente
-- Output disponible en MongoDB y archivo `hadoop_wordcount.json`
+```powershell
+docker-compose up -d
+```
 
-### MongoDB
+Verificar que todos los contenedores estén corriendo:
 
-| Colección | Contenido |
-|-----------|-----------|
-| `propiedades` | ~18,000 documentos con todos los campos de cada propiedad |
-| `resultados_analisis` | Resultados de Spark (por tipo de análisis) |
-| `wordcount_results` | Resultados de Hadoop WordCount |
-| `pipeline_summary` | Resumen de cada ejecución del pipeline |
+```powershell
+docker-compose ps
+```
+
+Contenedores esperados: `spark`, `kafka`, `zookeeper`, `hadoop`, `mongodb`
+
+### 2. Ejecutar el pipeline batch
+
+```powershell
+python run_pipeline.py
+```
+
+Esto ejecuta: carga de datos → Spark batch → análisis → carga MongoDB → dashboard.
+
+### 3. Iniciar el productor Kafka (streaming)
+
+```powershell
+python src/kafka/producer.py
+```
+
+### 4. Iniciar Spark Structured Streaming
+
+```powershell
+docker exec -it spark spark-submit src/spark/streaming_analysis.py
+```
+
+### 5. Ver el dashboard en vivo
+
+```powershell
+python src/dashboard/dashboard_live.py
+```
+
+Abrir navegador en: `http://localhost:8050`
 
 ---
 
-## 🧠 Sanitización de Precios
+## 📊 Datos Utilizados
 
-El módulo de Spark maneja formatos complejos de precios:
-
-| Formato | Resultado |
-|---------|-----------|
-| `S/ 392,773` | 392773 PEN |
-| `$ 240,000` | 240000 USD |
-| `Desde S/ 293.000` | 293000 PEN |
-| `desde 85000 usd hasta 120000 usd` | 85000-120000 USD |
-| `US$ 1,450,000` | 1450000 USD |
-| `$ 2,100,000` | 2100000 USD |
-
-Se extrae: precio mínimo, precio máximo y moneda (PEN/USD).
-
----
-
-## 📊 Dashboard
-
-El dashboard en `http://localhost:8080` muestra:
-
-- **🔁 Pipeline Status**: 6 pasos con indicadores visuales (pendiente, ejecutando, completado, falló)
-- **📊 Stats Overview**: Total propiedades, precio promedio, top distritos
-- **📈 6 Tabs de análisis**:
-  - **Precios**: Bar chart por distrito, doughnut rangos, doughnut moneda, scatter área vs precio
-  - **Ubicaciones**: Top 15 distritos (cantidad y precio)
-  - **Características**: Distribución de dormitorios y baños
-  - **Portales**: Comparación entre portales + tabla top distritos por portal
-  - **Palabras Clave**: Nube de palabras + tabla WordCount de Hadoop
-  - **Datos RAW**: Vista previa de datos Spark + colecciones MongoDB
-
-El dashboard se actualiza automáticamente cada 15 segundos mientras el pipeline está en ejecución.
+| Archivo                    | Formato    | Registros     | Fuente               | Uso                |
+| -------------------------- | ---------- | ------------- | -------------------- | ------------------ |
+| inmuebles_adondevivir.json | JSON       | ~1,800        | Scraping AdondeVivir | Datos crudos batch |
+| inmuebles_infocasas.json   | JSON       | ~450          | Scraping InfoCasas   | Datos crudos batch |
+| inmuebles_laencontre.json  | JSON       | ~320          | Scraping LaEncontre  | Datos crudos batch |
+| inmuebles_todos.json       | JSON       | ~2,570        | Consolidación        | Dataset unificado  |
+| inmuebles.csv              | CSV        | ~2,570        | Transformación       | Input Spark Batch  |
+| descripciones\_\*.md       | MD         | 3 archivos    | Transformación       | Input Hadoop       |
+| eventos_inmobiliarios      | JSON/Kafka | 1,000–3,000   | Simulación           | Spark Streaming    |
+| pipeline_summary           | BSON       | Por ejecución | Pipeline             | Historial          |
+| alertas_streaming          | BSON       | Variable      | Spark Streaming      | Alertas activas    |
 
 ---
 
-## 🔧 Troubleshooting
+## 👥 Integrantes del Grupo 3
 
-### Error: "pipeline_output bind mount failed"
-
-```bash
-# Crear el directorio manualmente antes de docker compose up
-mkdir -p pipeline_output
-```
-
-### Error: Spark no encuentra el CSV
-
-```bash
-# Verificar que el pipeline generó el CSV
-docker exec pipeline ls -la /pipeline_output/csv/
-```
-
-### Error: Hadoop no encuentra datos
-
-```bash
-# Verificar que el pipeline copió archivos al input-data
-docker exec namenode ls -la /input-data/
-```
-
-### Error: MongoDB no arranca
-
-```bash
-# Verificar healthcheck
-docker compose ps mongodb
-docker compose logs mongodb
-```
-
-### Ver logs de cada servicio
-
-```bash
-docker compose logs -f pipeline     # Pipeline principal
-docker compose logs -f namenode     # Hadoop NameNode
-docker compose logs -f dashboard    # Nginx dashboard
-docker compose logs -f mongodb      # MongoDB
-```
+| Rol          | Nombre             | Responsabilidad                        |
+| ------------ | ------------------ | -------------------------------------- |
+| Integrante 1 | [Apellido, Nombre] | Caso de negocio, datos, scraping       |
+| Integrante 2 | [Apellido, Nombre] | Arquitectura, infraestructura Docker   |
+| Integrante 3 | [Apellido, Nombre] | Spark: RDD, DataFrames, SQL, Streaming |
+| Integrante 4 | [Apellido, Nombre] | MongoDB, dashboard en tiempo real      |
+| Integrante 5 | [Apellido, Nombre] | Kafka, documentación, arquitectura     |
 
 ---
 
-## 📚 Referencias
+## 📝 Documentación
 
-- [Apache Hadoop](https://hadoop.apache.org/) - MapReduce + HDFS
-- [Apache Spark](https://spark.apache.org/) - PySpark DataFrames
-- [MongoDB](https://www.mongodb.com/) - Document database
-- [Scrapling](https://github.com/D4Vinci/Scrapling) - Python web scraping library
-- [Chart.js](https://www.chartjs.org/) - JavaScript charting library
-- [Docker Compose](https://docs.docker.com/compose/) - Multi-container orchestration
-
----
-
-## 📝 Licencia
-
-Proyecto académico - Instituto CERTUS - Ciclo 5 - Big Data
-
-**Grupo 3**
+- [Informe completo AA4](docs/grupo4_Evidencia4.md)
+- [Diagrama de arquitectura](docs/arquitectura_aa4.md)
+- [Indicaciones del profesor](docs/indicaciones_aa4.md)
+- [Evidencias de funcionamiento](docs/evidencias/)
