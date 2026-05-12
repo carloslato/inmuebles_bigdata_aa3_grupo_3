@@ -413,11 +413,136 @@
     }
     
     // ===== PIPELINE STATUS =====
-    async function loadPipelineStatus() {
-        const latest = await loadLatestFromMongo('pipeline_summary');
+    
+    // Variable global para el estado del pipeline en tiempo real
+    let realtimePipelineStatus = null;
+    let pipelineStatusInterval = null;
+    
+    // Función para renderizar el estado del pipeline
+    function renderPipelineStatus(status) {
         const container = document.getElementById('pipelineContent');
+        const pipelineState = status.pipeline || 'not_started';
+
+        const statusColors = {
+            'running': 'badge-running',
+            'completed': 'badge-completed',
+            'failed': 'badge-failed',
+            'not_started': 'badge-not_started',
+            'pending': 'badge-not_started'
+        };
         
+        const statusLabels = {
+            'running': '🟡 En ejecución',
+            'completed': '✅ Completado',
+            'failed': '❌ Falló',
+            'not_started': '⏸️ No iniciado',
+            'pending': '⏸️ Pendiente'
+        };
+        
+        const icons = {
+            'scraper': '🕸️',
+            'extract_csv': '🔄',
+            'mongodb_load': '🗄️',
+            'hadoop_wordcount': '🐘',
+            'spark_analysis': '⚡',
+            'mongodb_results': '💾',
+            'kafka_events': '📨',
+            'kafka_streaming': '⚡'
+        };
+        
+        let html = `<span class="pipeline-status-badge ${statusColors[pipelineState] || 'badge-not_started'}">${statusLabels[pipelineState] || '❓ Desconocido'}</span>`;
+        
+        if (status.started_at) {
+            html += `<span style="font-size:12px;color:#888;margin-left:10px;">Iniciado: ${new Date(status.started_at).toLocaleString('es-PE')}</span>`;
+        }
+        if (status.current_step) {
+            html += `<span style="font-size:12px;color:#var(--warning);margin-left:10px;">Paso actual: ${status.current_step}</span>`;
+        }
+        
+        if (status.error) {
+            html += `<div class="error-msg">⚠️ ${status.error}</div>`;
+        }
+
+        if (Array.isArray(status.steps) && status.steps.length > 0) {
+            html += `<div class="steps-grid mt-10">`;
+            for (const step of status.steps) {
+                const icon = icons[step.name] || '📋';
+                const stepStatus = step.status || 'pending';
+                html += `
+                    <div class="step-item step-status-${stepStatus}">
+                        <div class="step-icon">${icon}</div>
+                        <div class="step-label">${step.label || step.name}</div>
+                        <div style="font-size:11px;color:#999;margin-top:2px;">${statusLabels[stepStatus] || stepStatus}</div>
+                    </div>
+                `;
+            }
+            html += `</div>`;
+        }
+        
+        if (status.stats && Object.keys(status.stats).length > 0) {
+            html += `<div style="margin-top:12px;padding-top:12px;border-top:1px solid #eee;">`;
+            html += `<h4 style="font-size:13px;color:#666;margin-bottom:8px;">📊 Estadísticas en Tiempo Real</h4>`;
+            html += `<div class="flex gap-10" style="flex-wrap:wrap;">`;
+            for (const [key, val] of Object.entries(status.stats)) {
+                if (typeof val === 'number') {
+                    html += `<div style="background:#f5f5f5;padding:6px 12px;border-radius:6px;font-size:12px;"><strong>${key}:</strong> ${val.toLocaleString()}</div>`;
+                } else {
+                    html += `<div style="background:#f5f5f5;padding:6px 12px;border-radius:6px;font-size:12px;"><strong>${key}:</strong> ${String(val)}</div>`;
+                }
+            }
+            html += `</div></div>`;
+        }
+
+        container.innerHTML = html;
+    }
+    
+    // Cargar status en tiempo real desde el archivo JSON (se actualiza durante la ejecución)
+    async function loadRealtimePipelineStatus() {
+        try {
+            const resp = await fetch('/api/status_realtime?t=' + Date.now());
+            if (resp.ok) {
+                const status = await resp.json();
+                realtimePipelineStatus = status;
+                return status;
+            }
+        } catch (e) {
+            // Archivo aún no existe o error de red
+            return null;
+        }
+        return null;
+    }
+    
+    async function loadPipelineStatus() {
+        const container = document.getElementById('pipelineContent');
+        // Primero intentar cargar eventos de pipeline_status desde MongoDB (eventos Kafka procesados)
+        try {
+            const pipelineEvents = await loadFromMongo('pipeline_status_events');
+            if (pipelineEvents && pipelineEvents.length > 0) {
+                // Obtener el último evento
+                const latestEvent = pipelineEvents[0];
+                const status = latestEvent.status;
+                if (status && status.pipeline === 'running') {
+                    renderPipelineStatus(status);
+                    return;
+                }
+            }
+        } catch (e) {
+            // Ignorar error si no hay eventos aún
+        }
+        
+        // Si no hay eventos Kafka, cargar desde archivo JSON en tiempo real
+        const realtimeStatus = await loadRealtimePipelineStatus();
+        
+        // Si hay status en tiempo real y el pipeline está corriendo, usarlo
+        if (realtimeStatus && realtimeStatus.pipeline === 'running') {
+            renderPipelineStatus(realtimeStatus);
+            return;
+        }
+        
+        // Si no, cargar desde MongoDB (status histórico)
+        const latest = await loadLatestFromMongo('pipeline_summary');
         if (!latest || latest.length === 0) {
+            const container = document.getElementById('pipelineContent');
             container.innerHTML = `<div class="loading">⏳ Pipeline no iniciado o datos no disponibles</div>`;
             return;
         }

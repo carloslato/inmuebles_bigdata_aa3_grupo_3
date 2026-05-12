@@ -719,6 +719,26 @@ def step_mongodb_results():
         return False, {}
 
 
+def start_status_consumer():
+    """Iniciar el consumer de pipeline_status en segundo plano"""
+    log("Iniciando Pipeline Status Consumer en segundo plano...")
+    import subprocess
+    try:
+        # Iniciar consumer en segundo plano
+        process = subprocess.Popen(
+            ["python", "pipeline_status_consumer.py"],
+            cwd=PIPELINE_DIR,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True
+        )
+        log(f"Consumer iniciado con PID: {process.pid}")
+        return process
+    except Exception as e:
+        log(f"Error iniciando consumer: {e}")
+        return None
+
+
 def main():
     """Main pipeline orchestrator"""
     log("=" * 60)
@@ -741,6 +761,11 @@ def main():
         log(f"Error configurando Kafka: {err}")
         log("Pipeline detenido por error en Kafka setup")
         return 1
+
+    # Iniciar consumer de pipeline_status en segundo plano
+    consumer_process = start_status_consumer()
+    if consumer_process is None:
+        log("[WARN] No se pudo iniciar el status consumer, pero el pipeline continua...")
 
     all_success = True
     all_stats = {}

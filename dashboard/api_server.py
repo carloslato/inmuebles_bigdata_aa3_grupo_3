@@ -17,7 +17,8 @@ ALLOWED_COLLECTIONS = {
     "pipeline_summary",
     "eventos_streaming",
     "alertas_streaming",
-    "resumen_eventos_streaming"
+    "resumen_eventos_streaming",
+    "pipeline_status_events"
 }
 
 
