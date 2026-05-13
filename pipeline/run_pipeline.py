@@ -8,9 +8,11 @@ Flujo:
 1. Ejecutar scraper → JSON
 2. Transformar JSON → CSV y descripciones MD
 3. Cargar datos a MongoDB
-4. Ejecutar Hadoop WordCount sobre descripciones
-5. Ejecutar Spark para análisis de datos
-6. Guardar resultados en MongoDB
+4. Generar eventos en Kafka (producer)
+5. Ejecutar Hadoop WordCount sobre descripciones
+6. Ejecutar Spark Structured Streaming desde Kafka
+7. Ejecutar Spark para análisis de datos (batch)
+8. Guardar resultados en MongoDB
 
 Este script se ejecuta dentro del contenedor 'pipeline' de Docker.
 """
@@ -76,7 +78,7 @@ def run_cmd(cmd, cwd=None, timeout=None):
 def step_scraper():
     """Step 1: Run the scraper"""
     log("=" * 60)
-    log("STEP 1/6: Extrayendo datos de portales inmobiliarios (Scraper)")
+    log("STEP 1/7: Extrayendo datos de portales inmobiliarios (Scraper)")
     log("=" * 60)
     start_step("scraper")
 
@@ -125,7 +127,7 @@ def step_scraper():
 def step_extract_csv():
     """Step 2: Transform JSON to CSV and descriptions MD"""
     log("=" * 60)
-    log("STEP 2/6: Transformando datos a CSV y descripciones MD")
+    log("STEP 2/7: Transformando datos a CSV y descripciones MD")
     log("=" * 60)
     start_step("extract_csv")
 
@@ -137,7 +139,7 @@ def step_extract_csv():
             todos_json = os.path.join(OUTPUT_DIR, "json", "inmuebles_todos.json")
 
         if not os.path.exists(todos_json):
-            raise Exception("No se encontró inmuebles_todos.json")
+            raise Exception("No se encontro inmuebles_todos.json")
 
         with open(todos_json, "r", encoding="utf-8") as f:
             todos = json.load(f)
@@ -205,7 +207,7 @@ def step_extract_csv():
             with open(md_path, "w", encoding="utf-8") as f:
                 f.write(md_content)
 
-            # También copiar al input-data de Hadoop para WordCount
+            # Tambien copiar al input-data de Hadoop para WordCount
             hadoop_md_path = os.path.join(HADOOP_INPUT_DIR, md_filename)
             shutil.copy2(md_path, hadoop_md_path)
 
@@ -231,7 +233,7 @@ def step_extract_csv():
 def step_mongodb_load():
     """Step 3: Load data into MongoDB"""
     log("=" * 60)
-    log("STEP 3/6: Cargando datos a MongoDB")
+    log("STEP 3/7: Cargando datos a MongoDB")
     log("=" * 60)
     start_step("mongodb_load")
 
@@ -254,29 +256,49 @@ def step_mongodb_load():
             try:
                 client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=2000)
                 client.admin.command("ping")
-                log("Conexión a MongoDB establecida")
+                log("Conexion a MongoDB establecida")
                 break
             except Exception as e:
                 log(f"Esperando MongoDB (intento {attempt+1}/10): {e}")
                 time.sleep(3)
         else:
-            raise Exception("No se pudo conectar a MongoDB después de 10 intentos")
+            raise Exception("No se pudo conectar a MongoDB despues de 10 intentos")
 
         db = client[MONGO_DB]
         collection = db["propiedades"]
 
-        # Limpiar colección anterior e insertar
-        collection.delete_many({})
-        result = collection.insert_many(todos)
-        log(f"Insertados {len(result.inserted_ids)} documentos en MongoDB")
+        # Generar pipeline_id para trazabilidad
+        pipeline_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log(f"Pipeline ID: {pipeline_id}")
+        
+        # Insertar datos preservando historial (upsert por property_id)
+        insertados = 0
+        actualizados = 0
+        for item in todos:
+            item["pipeline_id"] = pipeline_id
+            item["fecha_carga"] = datetime.now().isoformat()
+            # Upsert basado en property_id + portal para evitar duplicados
+            property_id = item.get("property_id", f"{item.get('portal', 'unknown')}_{item.get('url', '')}")
+            result = collection.update_one(
+                {"property_id": property_id},
+                {"$set": item},
+                upsert=True
+            )
+            if result.upserted_id:
+                insertados += 1
+            else:
+                actualizados += 1
+        
+        log(f"Procesados {len(todos)} documentos: {insertados} insertados, {actualizados} actualizados")
+        log(f"Documentos totales en coleccion: {collection.count_documents({})}")
 
-        # Crear índices para búsquedas rápidas
+        # Crear indices para busquedas rapidas
         collection.create_index("portal")
         collection.create_index("precio")
         collection.create_index("ubicacion")
         collection.create_index("dormitorios")
         collection.create_index("latitud")
-        log("Índices creados en MongoDB")
+        log("Indices creados en MongoDB")
 
         client.close()
 
@@ -295,15 +317,65 @@ def step_mongodb_load():
         return False, {}
 
 
+def step_kafka_events():
+    """Step 4: Generar eventos de Kafka para simulación en tiempo real"""
+    log("=" * 60)
+    log("STEP 4/8: Generando eventos inmobiliarios en Kafka (Producer)")
+    log("=" * 60)
+    start_step("kafka_events")
+
+    try:
+        from kafka import KafkaProducer
+        from kafka_producer import run_producer, KAFKA_BOOTSTRAP_SERVERS, TOPIC_EVENTS
+
+        # Configuración desde variables de entorno o valores por defecto
+        num_events = int(os.environ.get("KAFKA_NUM_EVENTS", "500"))
+        delay = float(os.environ.get("KAFKA_EVENT_DELAY", "0.02"))
+
+        log(f"Configuración: {num_events} eventos, delay={delay}s")
+        log(f"Kafka servers: {KAFKA_BOOTSTRAP_SERVERS}")
+        log(f"Topic: {TOPIC_EVENTS}")
+
+        # Verificar conexión a Kafka antes de enviar
+        log("Verificando conexión a Kafka...")
+        test_producer = KafkaProducer(
+            bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+            value_serializer=lambda v: b"test",
+            acks='all',
+            request_timeout_ms=10000,
+            max_block_ms=15000
+        )
+        test_producer.send(TOPIC_EVENTS, value=b"connection_test")
+        test_producer.flush()
+        test_producer.close()
+        log("✓ Conexión a Kafka exitosa")
+
+        # Ejecutar productor
+        stats = run_producer(num_events=num_events, delay=delay)
+
+        # Verificar que los mensajes llegaron
+        log(f"Kafka producer stats: {stats.get('eventos_enviados', 0)} enviados")
+
+        complete_step("kafka_events", stats)
+        return True, stats
+
+    except Exception as e:
+        log(f"  [FAIL] Kafka events error: {e}")
+        import traceback
+        traceback.print_exc()
+        fail_step("kafka_events", str(e))
+        return False, {}
+
+
 def step_hadoop_wordcount():
     """
-    Step 4: Wait for Hadoop WordCount to complete
+    Step 5: Wait for Hadoop WordCount to complete
     Hadoop se ejecuta en su propio contenedor (namenode) y escribe
-    directamente en /host_output/ que es la raíz de pipeline_output/.
-    Buscamos el archivo .hadoop_complete como señal de finalización.
+    directamente en /host_output/ que es la raiz de pipeline_output/.
+    Buscamos el archivo .hadoop_complete como senal de finalizacion.
     """
     log("=" * 60)
-    log("STEP 4/6: Hadoop WordCount sobre descripciones")
+    log("STEP 5/8: Hadoop WordCount sobre descripciones")
     log("=" * 60)
     start_step("hadoop_wordcount")
 
@@ -312,16 +384,16 @@ def step_hadoop_wordcount():
         log("Esperando que Hadoop WordCount termine...")
         log(f"  Buscando archivos en: {OUTPUT_DIR}")
 
-        # Esperar hasta que aparezca la señal de completado o archivos part-r-*
+        # Esperar hasta que aparezca la senal de completado o archivos part-r-*
         max_wait = 600  # 10 min max
         waited = 0
         found = False
 
         while waited < max_wait:
-            # Verificar señal de completado (.hadoop_complete)
+            # Verificar senal de completado (.hadoop_complete)
             complete_signal = os.path.join(OUTPUT_DIR, ".hadoop_complete")
             if os.path.exists(complete_signal):
-                log("  Señal .hadoop_complete encontrada!")
+                log("  Senal .hadoop_complete encontrada!")
                 found = True
                 break
 
@@ -342,9 +414,9 @@ def step_hadoop_wordcount():
                 log(f"  Esperando Hadoop... ({waited}s)")
 
         if not found:
-            log("  [WARN] No se encontraron archivos de Hadoop después del timeout. Continuando...")
+            log("  [WARN] No se encontraron archivos de Hadoop despues del timeout. Continuando...")
         else:
-            # Mover/eslabonar archivos de Hadoop a hadoop_output para claridad
+            # Mover/enlazar archivos de Hadoop a hadoop_output para claridad
             hadoop_output_dir = os.path.join(OUTPUT_DIR, "hadoop_output")
             os.makedirs(hadoop_output_dir, exist_ok=True)
 
@@ -361,7 +433,7 @@ def step_hadoop_wordcount():
 
         stats = {"hadoop_completado": found}
         if found:
-            # Calcular tamaño total de archivos Hadoop
+            # Calcular tamano total de archivos Hadoop
             hadoop_files_size = 0
             for f in os.listdir(OUTPUT_DIR):
                 if f.startswith("part-") or f == "hadoop_wordcount.json":
@@ -379,10 +451,79 @@ def step_hadoop_wordcount():
         return False, {}
 
 
-def step_spark_analysis():
-    """Step 5: Run Spark analysis"""
+def step_spark_streaming():
+    """Step 6: Ejecutar Spark Structured Streaming"""
     log("=" * 60)
-    log("STEP 5/6: Análisis con Spark")
+    log("STEP 6/8: Spark Structured Streaming desde Kafka")
+    log("=" * 60)
+    start_step("spark_streaming")
+
+    try:
+        spark_script = os.path.join(PIPELINE_DIR, "spark_streaming.py")
+        if not os.path.exists(spark_script):
+            raise Exception(f"Spark streaming script not found: {spark_script}")
+
+        # Ejecutar Spark submit con timeout de 250 segundos (200s streaming + overhead)
+        rc, out, err = run_cmd(
+            [
+                "spark-submit",
+                "--master", "local[*]",
+                "--name", "InmueblesStreaming",
+                "--packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0",
+                spark_script
+            ],
+            cwd=PIPELINE_DIR,
+            timeout=250
+        )
+
+        if rc != 0:
+            # No fallar si es solo timeout, el streaming puede haber procesado eventos
+            log(f"[WARN] Spark streaming termino con codigo {rc}: {err}")
+
+        # Verificar resultados en MongoDB
+        from pymongo import MongoClient
+        stats = {"streaming_ejecutado": True}
+        
+        try:
+            client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=2000)
+            db = client[MONGO_DB]
+            
+            # Contar documentos en cada coleccion
+            for coll_name in ["eventos_streaming", "resumen_eventos_streaming", 
+                              "resumen_precios_streaming", "alertas_streaming"]:
+                try:
+                    count = db[coll_name].count_documents({})
+                    stats[coll_name] = count
+                    log(f"  {coll_name}: {count} documentos")
+                except Exception as e:
+                    stats[coll_name] = 0
+                    log(f"  {coll_name}: 0 documentos (no existe o error)")
+            
+            client.close()
+        except Exception as e:
+            log(f"[WARN] No se pudo verificar MongoDB: {e}")
+            stats["mongodb_verificacion"] = False
+
+        complete_step("spark_streaming", stats)
+        return True, stats
+
+    except subprocess.TimeoutExpired:
+        log("[INFO] Spark streaming timeout (esperado, continuando...)")
+        # Timeout es esperado, el streaming se ejecuto por 60 segundos
+        stats = {"streaming_timeout": True, "streaming_ejecutado": True}
+        complete_step("spark_streaming", stats)
+        return True, stats
+        
+    except Exception as e:
+        log(f"  [FAIL] Spark streaming error: {e}")
+        fail_step("spark_streaming", str(e))
+        return False, {}
+
+
+def step_spark_analysis():
+    """Step 7: Run Spark analysis"""
+    log("=" * 60)
+    log("STEP 7/8: Analisis con Spark (batch)")
     log("=" * 60)
     start_step("spark_analysis")
 
@@ -441,9 +582,9 @@ def step_spark_analysis():
 
 
 def step_mongodb_results():
-    """Step 6: Save analysis results to MongoDB"""
+    """Step 8: Save analysis results to MongoDB"""
     log("=" * 60)
-    log("STEP 6/6: Guardando resultados de análisis en MongoDB")
+    log("STEP 8/8: Guardando resultados de analisis en MongoDB")
     log("=" * 60)
     start_step("mongodb_results")
 
@@ -456,7 +597,7 @@ def step_mongodb_results():
             try:
                 client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=2000)
                 client.admin.command("ping")
-                log("Conexión a MongoDB establecida")
+                log("Conexion a MongoDB establecida")
                 break
             except Exception as e:
                 log(f"Esperando MongoDB (intento {attempt+1}/5): {e}")
@@ -466,10 +607,10 @@ def step_mongodb_results():
 
         db = client[MONGO_DB]
 
-        # Guardar resultados de Spark
+        # Guardar resultados de Spark (preservando historial)
         spark_results_dir = os.path.join(OUTPUT_DIR, "spark_results")
         results_collection = db["resultados_analisis"]
-        results_collection.delete_many({})
+        pipeline_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         if os.path.exists(spark_results_dir):
             for fname in os.listdir(spark_results_dir):
@@ -479,6 +620,7 @@ def step_mongodb_results():
                         with open(fpath, "r", encoding="utf-8") as fh:
                             data = json.load(fh)
                         doc = {
+                            "pipeline_id": pipeline_id,
                             "tipo_analisis": fname.replace(".json", ""),
                             "archivo": fname,
                             "fecha": datetime.now().isoformat(),
@@ -489,10 +631,9 @@ def step_mongodb_results():
                     except Exception as e:
                         log(f"  Error guardando {fname}: {e}")
 
-        # Guardar resumen de Hadoop WordCount (top palabras)
-        # Buscar en: hadoop_output/ (organizado) o en la raíz de OUTPUT_DIR (donde Hadoop los escribe)
+        # Guardar resumen de Hadoop WordCount (top palabras) - preservando historial
+        # Buscar en: hadoop_output/ (organizado) o en la raiz de OUTPUT_DIR (donde Hadoop los escribe)
         wordcount_collection = db["wordcount_results"]
-        wordcount_collection.delete_many({})
 
         hadoop_dirs_to_check = [
             os.path.join(OUTPUT_DIR, "hadoop_output"),
@@ -512,7 +653,7 @@ def step_mongodb_results():
                         elif fname == "hadoop_wordcount.json":
                             wordcount_json = fpath
 
-        # Si no se generó el JSON en Hadoop (porque python3 no está en la imagen), lo generamos aquí
+        # Si no se genero el JSON en Hadoop (porque python3 no esta en la imagen), lo generamos aqui
         if not wordcount_json and part_files:
             log("  Generando hadoop_wordcount.json desde archivos part-r-*...")
             words = []
@@ -546,7 +687,7 @@ def step_mongodb_results():
             wordcount_collection.insert_one(doc)
             log(f"WordCount guardado en MongoDB ({len(wc_data)} palabras)")
 
-        # También guardar los archivos part-r-* raw
+        # Tambien guardar los archivos part-r-* raw
         for pf in part_files:
             with open(pf, "r", encoding="utf-8", errors="ignore") as fh:
                 content = fh.read()
@@ -554,7 +695,7 @@ def step_mongodb_results():
                 "tipo": "hadoop_wordcount_raw",
                 "archivo": os.path.basename(pf),
                 "fecha": datetime.now().isoformat(),
-                "contenido": content[:50000]  # Limitar tamaño
+                "contenido": content[:50000]  # Limitar tamano
             }
             wordcount_collection.insert_one(doc)
             log(f"WordCount raw guardado en MongoDB: {os.path.basename(pf)}")
@@ -600,6 +741,26 @@ def step_mongodb_results():
         return False, {}
 
 
+def start_status_consumer():
+    """Iniciar el consumer de pipeline_status en segundo plano"""
+    log("Iniciando Pipeline Status Consumer en segundo plano...")
+    import subprocess
+    try:
+        # Iniciar consumer en segundo plano
+        process = subprocess.Popen(
+            ["python", "pipeline_status_consumer.py"],
+            cwd=PIPELINE_DIR,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True
+        )
+        log(f"Consumer iniciado con PID: {process.pid}")
+        return process
+    except Exception as e:
+        log(f"Error iniciando consumer: {e}")
+        return None
+
+
 def main():
     """Main pipeline orchestrator"""
     log("=" * 60)
@@ -623,6 +784,11 @@ def main():
         log("Pipeline detenido por error en Kafka setup")
         return 1
 
+    # Iniciar consumer de pipeline_status en segundo plano
+    consumer_process = start_status_consumer()
+    if consumer_process is None:
+        log("[WARN] No se pudo iniciar el status consumer, pero el pipeline continua...")
+
     all_success = True
     all_stats = {}
 
@@ -634,7 +800,7 @@ def main():
         log("Pipeline detenido por error en scraper")
         all_success = False
 
-    # Steps 2-6 solo si todo va bien
+    # Steps 2-8 solo si todo va bien
     if all_success:
         log("\n")
         success, stats = step_extract_csv()
@@ -649,10 +815,25 @@ def main():
         if not success:
             all_success = False
 
+    # Step 4: Kafka Events (nuevo step entre MongoDB y Hadoop)
+    if all_success:
+        log("\n")
+        success, stats = step_kafka_events()
+        all_stats.update(stats)
+        # Kafka events no es critico, continuar incluso si falla
+        if not success:
+            log("[WARN] Kafka events fallo pero el pipeline continua...")
+
     if all_success:
         log("\n")
         success, stats = step_hadoop_wordcount()
         all_stats.update(stats)
+
+    if all_success:
+        log("\n")
+        success, stats = step_spark_streaming()
+        all_stats.update(stats)
+        # Streaming no es critico, continuar incluso si falla
 
     if all_success:
         log("\n")

@@ -17,7 +17,8 @@ ALLOWED_COLLECTIONS = {
     "pipeline_summary",
     "eventos_streaming",
     "alertas_streaming",
-    "resumen_eventos_streaming"
+    "resumen_eventos_streaming",
+    "pipeline_status_events"
 }
 
 
@@ -51,6 +52,18 @@ def get_latest(collection):
 
     docs = list(collection_obj.find({}, {"_id": 0}).sort(collection_sort(collection)).limit(10))
     return jsonify(docs)
+
+
+@app.route("/api/health")
+def health_check():
+    """Diagnostic: collections counts"""
+    try:
+        counts = {}
+        for coll_name in ALLOWED_COLLECTIONS:
+            counts[coll_name] = db[coll_name].count_documents({})
+        return jsonify({"status": "ok", "collections": counts})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 if __name__ == "__main__":

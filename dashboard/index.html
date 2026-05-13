@@ -318,7 +318,7 @@
                         <div class="chart-container"><canvas id="chartEventosTipo"></canvas></div>
                     </div>
                 </div>
-                <div class="grid-2 mt-10">
+                <div class="grid-2 mt-10 hidden">
                     <div class="card">
                         <h3>🔔 Alertas Recientes</h3>
                         <div id="alertasLive"><div class="loading">Sin alertas...</div></div>
@@ -328,7 +328,7 @@
                         <div class="chart-container"><canvas id="chartTasaEventos"></canvas></div>
                     </div>
                 </div>
-                <div class="card mt-10">
+                <div class="card mt-10 hidden">
                     <h3>🏷️ Precios Streaming por Distrito</h3>
                     <div class="chart-container"><canvas id="chartPreciosStreaming"></canvas></div>
                 </div>
@@ -372,6 +372,12 @@
     
     let charts = {};
     
+    // Persistencia de eventos en navegador (timeline acumulativo)
+    let accumulatedEvents = [];
+    let accumulatedAlertas = [];
+    let knownEventIds = new Set();
+    let knownAlertIds = new Set();
+    
     async function loadFromMongo(collection) {
         const url = `${API_URL}/${collection}`;
         return await fetchJSON(url);
@@ -413,11 +419,136 @@
     }
     
     // ===== PIPELINE STATUS =====
-    async function loadPipelineStatus() {
-        const latest = await loadLatestFromMongo('pipeline_summary');
+    
+    // Variable global para el estado del pipeline en tiempo real
+    let realtimePipelineStatus = null;
+    let pipelineStatusInterval = null;
+    
+    // Función para renderizar el estado del pipeline
+    function renderPipelineStatus(status) {
         const container = document.getElementById('pipelineContent');
+        const pipelineState = status.pipeline || 'not_started';
+
+        const statusColors = {
+            'running': 'badge-running',
+            'completed': 'badge-completed',
+            'failed': 'badge-failed',
+            'not_started': 'badge-not_started',
+            'pending': 'badge-not_started'
+        };
         
+        const statusLabels = {
+            'running': '🟡 En ejecución',
+            'completed': '✅ Completado',
+            'failed': '❌ Falló',
+            'not_started': '⏸️ No iniciado',
+            'pending': '⏸️ Pendiente'
+        };
+        
+        const icons = {
+            'scraper': '🕸️',
+            'extract_csv': '🔄',
+            'mongodb_load': '🗄️',
+            'hadoop_wordcount': '🐘',
+            'spark_analysis': '⚡',
+            'mongodb_results': '💾',
+            'kafka_events': '📨',
+            'kafka_streaming': '⚡'
+        };
+        
+        let html = `<span class="pipeline-status-badge ${statusColors[pipelineState] || 'badge-not_started'}">${statusLabels[pipelineState] || '❓ Desconocido'}</span>`;
+        
+        if (status.started_at) {
+            html += `<span style="font-size:12px;color:#888;margin-left:10px;">Iniciado: ${new Date(status.started_at).toLocaleString('es-PE')}</span>`;
+        }
+        if (status.current_step) {
+            html += `<span style="font-size:12px;color:#var(--warning);margin-left:10px;">Paso actual: ${status.current_step}</span>`;
+        }
+        
+        if (status.error) {
+            html += `<div class="error-msg">⚠️ ${status.error}</div>`;
+        }
+
+        if (Array.isArray(status.steps) && status.steps.length > 0) {
+            html += `<div class="steps-grid mt-10">`;
+            for (const step of status.steps) {
+                const icon = icons[step.name] || '📋';
+                const stepStatus = step.status || 'pending';
+                html += `
+                    <div class="step-item step-status-${stepStatus}">
+                        <div class="step-icon">${icon}</div>
+                        <div class="step-label">${step.label || step.name}</div>
+                        <div style="font-size:11px;color:#999;margin-top:2px;">${statusLabels[stepStatus] || stepStatus}</div>
+                    </div>
+                `;
+            }
+            html += `</div>`;
+        }
+        
+        if (status.stats && Object.keys(status.stats).length > 0) {
+            html += `<div style="margin-top:12px;padding-top:12px;border-top:1px solid #eee;">`;
+            html += `<h4 style="font-size:13px;color:#666;margin-bottom:8px;">📊 Estadísticas en Tiempo Real</h4>`;
+            html += `<div class="flex gap-10" style="flex-wrap:wrap;">`;
+            for (const [key, val] of Object.entries(status.stats)) {
+                if (typeof val === 'number') {
+                    html += `<div style="background:#f5f5f5;padding:6px 12px;border-radius:6px;font-size:12px;"><strong>${key}:</strong> ${val.toLocaleString()}</div>`;
+                } else {
+                    html += `<div style="background:#f5f5f5;padding:6px 12px;border-radius:6px;font-size:12px;"><strong>${key}:</strong> ${String(val)}</div>`;
+                }
+            }
+            html += `</div></div>`;
+        }
+
+        container.innerHTML = html;
+    }
+    
+    // Cargar status en tiempo real desde el archivo JSON (se actualiza durante la ejecución)
+    async function loadRealtimePipelineStatus() {
+        try {
+            const resp = await fetch('/api/status_realtime?t=' + Date.now());
+            if (resp.ok) {
+                const status = await resp.json();
+                realtimePipelineStatus = status;
+                return status;
+            }
+        } catch (e) {
+            // Archivo aún no existe o error de red
+            return null;
+        }
+        return null;
+    }
+    
+    async function loadPipelineStatus() {
+        const container = document.getElementById('pipelineContent');
+        // Primero intentar cargar eventos de pipeline_status desde MongoDB (eventos Kafka procesados)
+        try {
+            const pipelineEvents = await loadFromMongo('pipeline_status_events');
+            if (pipelineEvents && pipelineEvents.length > 0) {
+                // Obtener el último evento
+                const latestEvent = pipelineEvents[0];
+                const status = latestEvent.status;
+                if (status && status.pipeline === 'running') {
+                    renderPipelineStatus(status);
+                    return;
+                }
+            }
+        } catch (e) {
+            // Ignorar error si no hay eventos aún
+        }
+        
+        // Si no hay eventos Kafka, cargar desde archivo JSON en tiempo real
+        const realtimeStatus = await loadRealtimePipelineStatus();
+        
+        // Si hay status en tiempo real y el pipeline está corriendo, usarlo
+        if (realtimeStatus && realtimeStatus.pipeline === 'running') {
+            renderPipelineStatus(realtimeStatus);
+            return;
+        }
+        
+        // Si no, cargar desde MongoDB (status histórico)
+        const latest = await loadLatestFromMongo('pipeline_summary');
         if (!latest || latest.length === 0) {
+            const container = document.getElementById('pipelineContent');
             container.innerHTML = `<div class="loading">⏳ Pipeline no iniciado o datos no disponibles</div>`;
             return;
         }
@@ -526,15 +657,36 @@
     }
 
     async function loadStreamingData() {
-        const eventos = await loadFromMongo('eventos_streaming');
-        const alertas = await loadFromMongo('alertas_streaming');
+        const nuevosEventos = await loadFromMongo('eventos_streaming');
+        const nuevasAlertas = await loadFromMongo('alertas_streaming');
         const resumen = await loadFromMongo('resumen_eventos_streaming');
 
-        renderStreamingEvents(eventos);
-        renderAlertas(alertas);
-        renderEventosTipo(eventos, resumen);
+        // Acumular eventos sin duplicados (persistencia en navegador)
+        if (nuevosEventos && nuevosEventos.length) {
+            for (const evt of nuevosEventos) {
+                const id = evt.event_id || evt._id || evt.timestamp + evt.event_type;
+                if (!knownEventIds.has(id)) {
+                    knownEventIds.add(id);
+                    accumulatedEvents.push(evt);
+                }
+            }
+        }
+        // Acumular alertas sin duplicados
+        if (nuevasAlertas && nuevasAlertas.length) {
+            for (const alrt of nuevasAlertas) {
+                const id = alrt.alert_id || alrt._id || alrt.timestamp + alrt.alert_type;
+                if (!knownAlertIds.has(id)) {
+                    knownAlertIds.add(id);
+                    accumulatedAlertas.push(alrt);
+                }
+            }
+        }
+
+        renderStreamingEvents(accumulatedEvents);
+        renderAlertas(accumulatedAlertas);
+        renderEventosTipo(accumulatedEvents, resumen);
         renderTasaEventos(resumen);
-        renderPreciosStreaming(eventos);
+        renderPreciosStreaming(accumulatedEvents);
     }
 
     function renderStreamingEvents(eventos) {
@@ -544,8 +696,14 @@
             return;
         }
         const rows = eventos.slice(0, 15).map((item, idx) => {
+            // Manejar estructura anidada del streaming (data.district, data.price, etc.)
+            const data = item.data || {};
             const fecha = item.fecha || item.timestamp || item.fecha_evento || '';
-            return `<tr><td>${idx + 1}</td><td>${item.tipo || item.type || item.evento || 'N/A'}</td><td>${item.distrito || item.district || item.location || 'N/A'}</td><td>${item.precio || item.price || '—'}</td><td>${fecha ? new Date(fecha).toLocaleString('es-PE') : 'N/A'}</td></tr>`;
+            const tipo = item.event_type || item.tipo || item.type || item.evento || 'N/A';
+            const distrito = data.district || item.district || item.distrito || data.location || item.location || 'N/A';
+            const precio = data.price || item.price || item.precio || '—';
+            const formattedPrice = (typeof precio === 'number' && precio > 0) ? `$${Number(precio).toLocaleString('en-US', {minimumFractionDigits:0, maximumFractionDigits:0})}` : '—';
+            return `<tr><td>${idx + 1}</td><td>${tipo}</td><td>${distrito}</td><td>${formattedPrice}</td><td>${fecha ? new Date(fecha).toLocaleString('es-PE') : 'N/A'}</td></tr>`;
         }).join('');
         container.innerHTML = `<div class="table-wrapper"><table class="data-table"><thead><tr><th>#</th><th>Tipo</th><th>Distrito</th><th>Precio</th><th>Fecha</th></tr></thead><tbody>${rows}</tbody></table></div>`;
     }
@@ -591,15 +749,29 @@
     function renderTasaEventos(resumen) {
         const points = [];
         if (resumen && resumen.length) {
-            resumen.slice(0, 20).reverse().forEach(item => {
-                const fecha = parseDate(item.fecha || item.timestamp || item.created_at);
-                if (!fecha) return;
-                const valor = Number(item.tasa || item.rate || item.count || item.cantidad || 0);
+            // El resumen tiene estructura de window: {start, end}, event_type, total_eventos, eventos_unicos
+            const sorted = [...resumen].sort((a, b) => {
+                const aStart = a.window?.start || a.start || 0;
+                const bStart = b.window?.start || b.start || 0;
+                return aStart - bStart;
+            });
+            sorted.slice(-20).forEach(item => {
+                // Usar window.start como timestamp
+                const ts = item.window?.start || item.start;
+                const fecha = ts ? new Date(Number(ts)) : null;
+                if (!fecha || Number.isNaN(fecha.getTime())) return;
+                const valor = Number(item.total_eventos || item.count || 0);
                 points.push({x: fecha, y: valor});
             });
         }
         if (points.length) {
-            createLineChart('chartTasaEventos', points, 'Eventos por minuto');
+            createLineChart('chartTasaEventos', points, 'Eventos por ventana');
+        } else {
+            // Si no hay datos, mostrar un mensaje
+            const container = document.getElementById('chartTasaEventos');
+            if (container) {
+                container.parentElement.innerHTML = '<div class="loading">Sin datos de tasa disponibles. Los eventos se procesan en ventanas de tiempo.</div>';
+            }
         }
     }
 
@@ -607,8 +779,11 @@
         const districts = {};
         if (eventos && eventos.length) {
             eventos.forEach(item => {
-                const distrito = item.distrito || item.district || item.location || 'N/A';
-                const precio = Number(item.precio || item.price || item.valor || 0);
+                // Manejar estructura anidada: data.district, data.price
+                const data = item.data || {};
+                let distrito = data.district || item.district || item.distrito || 'N/A';
+                let precio = data.price || item.price || item.precio || 0;
+                precio = Number(precio);
                 if (!precio || precio <= 0) return;
                 if (!districts[distrito]) districts[distrito] = {total: 0, count: 0};
                 districts[distrito].total += precio;
@@ -620,6 +795,22 @@
         const top = values.slice(0, 12);
         if (top.length) {
             createBarChart('chartPreciosStreaming', top.map(d => d.distrito), top.map(d => Math.round(d.average)), 'Precio promedio ($)', getColor(1, 0.7));
+        } else {
+            // Si no hay datos con estructura anidada, también buscar en datos planos
+            if (eventos && eventos.length) {
+                eventos.forEach(item => {
+                    const distrito = item.distrito || item.district || 'N/A';
+                    const precio = Number(item.precio_promedio || item.precio || item.price || 0);
+                    if (!precio || precio <= 0) return;
+                    if (!districts[distrito]) districts[distrito] = {total: precio * item.total_propiedades || 1, count: item.total_propiedades || 1};
+                });
+            }
+            const values2 = Object.entries(districts).map(([key, value]) => ({distrito: key, average: value.total / value.count}));
+            values2.sort((a, b) => b.average - a.average);
+            const top2 = values2.slice(0, 12);
+            if (top2.length) {
+                createBarChart('chartPreciosStreaming', top2.map(d => d.distrito), top2.map(d => Math.round(d.average)), 'Precio promedio ($)', getColor(1, 0.7));
+            }
         }
     }
 
@@ -994,6 +1185,7 @@
         setInterval(() => {
             loadStreamingData();
             loadPipelineHistory();
+            loadPipelineStatus();
         }, 3000);
     });
     </script>

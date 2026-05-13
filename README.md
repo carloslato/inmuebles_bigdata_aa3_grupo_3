@@ -133,11 +133,7 @@ docker exec -it spark spark-submit src/spark/streaming_analysis.py
 
 ### 5. Ver el dashboard en vivo
 
-```powershell
-python src/dashboard/dashboard_live.py
-```
-
-Abrir navegador en: `http://localhost:8050`
+Abrir navegador en: `http://localhost:8080`
 
 ---
 
@@ -155,17 +151,6 @@ Abrir navegador en: `http://localhost:8050`
 | pipeline_summary           | BSON       | Por ejecución | Pipeline             | Historial          |
 | alertas_streaming          | BSON       | Variable      | Spark Streaming      | Alertas activas    |
 
----
-
-## 👥 Integrantes del Grupo 3
-
-| Rol          | Nombre             | Responsabilidad                        |
-| ------------ | ------------------ | -------------------------------------- |
-| Integrante 1 | [Apellido, Nombre] | Caso de negocio, datos, scraping       |
-| Integrante 2 | [Apellido, Nombre] | Arquitectura, infraestructura Docker   |
-| Integrante 3 | [Apellido, Nombre] | Spark: RDD, DataFrames, SQL, Streaming |
-| Integrante 4 | [Apellido, Nombre] | MongoDB, dashboard en tiempo real      |
-| Integrante 5 | [Apellido, Nombre] | Kafka, documentación, arquitectura     |
 
 ---
 
