@@ -21,7 +21,7 @@ import time
 from datetime import datetime
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
-    col, from_json, to_json, window, count, avg, countDistinct,
+    col, from_json, to_json, window, count, avg, approx_count_distinct,
     when, lit, unix_timestamp, expr, struct, max as spark_max, min as spark_min
 )
 from pyspark.sql.types import (
@@ -297,9 +297,12 @@ def main():
         event_schema = get_event_schema()
         
         df_parsed = df_kafka.select(
-            col("key").cast("string").alias("key"),
+            col("key").cast("string").alias("kafka_key"),
             from_json(col("value").cast("string"), event_schema).alias("event")
-        ).select("event.*")
+        ).select(
+            col("kafka_key").alias("key"),
+            col("event.*")
+        )
         
         # No se puede hacer cache en streaming DataFrames sin writeStream.start()
         print(f"[INFO] DataFrame parseado listo (streaming - sin cache)")
@@ -315,7 +318,7 @@ def main():
             ) \
             .agg(
                 count("*").alias("total_eventos"),
-                countDistinct("key").alias("eventos_unicos")
+                approx_count_distinct("event_id").alias("eventos_unicos")
             )
         
         print("[INFO] Resumen eventos por tipo configurado")
@@ -323,24 +326,19 @@ def main():
         # 4. Resumen 2 - Precio promedio por distrito (ventana deslizante 30 seg)
         print("\n[4/6] Configurando resumen de precios por distrito...")
         
-        # Extraer data.price y data.district para el analisis
-        df_with_data = df_parsed.withColumn(
-            "data_struct",
-            from_json(col("data").cast("string"), get_event_schema()["data"])
-        )
-        
-        precio_promedio_distrito = df_with_data \
+        # data ya es un struct parseado, acceder directamente a sus campos
+        precio_promedio_distrito = df_parsed \
             .filter(col("event_type").isin("nueva_propiedad", "cambio_precio")) \
             .withWatermark("timestamp", "30 seconds") \
             .groupBy(
                 window(col("timestamp"), "30 seconds", "15 seconds"),
-                col("data_struct.district").alias("distrito")
+                col("data.district").alias("distrito")
             ) \
             .agg(
-                avg("data_struct.price").alias("precio_promedio"),
+                avg("data.price").alias("precio_promedio"),
                 count("*").alias("total_propiedades"),
-                spark_min("data_struct.price").alias("precio_minimo"),
-                spark_max("data_struct.price").alias("precio_maximo")
+                spark_min("data.price").alias("precio_minimo"),
+                spark_max("data.price").alias("precio_maximo")
             )
         
         print("[INFO] Resumen precios por distrito configurado")
@@ -403,7 +401,7 @@ def main():
                 print(f"[INFO] Streaming activo por {elapsed} segundos...")
                 
                 # Verificar estado de las queries
-                if not query_eventos.isRunning or not query_precios.isRunning:
+                if not query_eventos.isActive or not query_precios.isActive:
                     print("[WARN] Una de las queries se detuvo")
                     break
                     
