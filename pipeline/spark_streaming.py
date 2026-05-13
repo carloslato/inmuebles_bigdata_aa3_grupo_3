@@ -40,7 +40,7 @@ TOPIC_EVENTS = "inmuebles_events"
 TOPIC_ALERTS = "inmuebles_alerts"
 
 # Timeout para el streaming (segundos)
-STREAMING_TIMEOUT = 60
+STREAMING_TIMEOUT = 200
 
 
 def get_spark_session():
@@ -285,7 +285,7 @@ def main():
             .format("kafka") \
             .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS) \
             .option("subscribe", TOPIC_EVENTS) \
-            .option("startingOffsets", "latest") \
+            .option("startingOffsets", "earliest") \
             .option("failOnDataLoss", "false") \
             .load()
         
@@ -301,9 +301,8 @@ def main():
             from_json(col("value").cast("string"), event_schema).alias("event")
         ).select("event.*")
         
-        # Cachear el DataFrame parseado
-        df_parsed.cache()
-        print(f"[INFO] DataFrame parseado y cacheado")
+        # No se puede hacer cache en streaming DataFrames sin writeStream.start()
+        print(f"[INFO] DataFrame parseado listo (streaming - sin cache)")
         df_parsed.printSchema()
         
         # 3. Resumen 1 - Eventos por tipo (window de 10 segundos)

@@ -325,22 +325,44 @@ def step_kafka_events():
     start_step("kafka_events")
 
     try:
-        from kafka_producer import run_producer
+        from kafka import KafkaProducer
+        from kafka_producer import run_producer, KAFKA_BOOTSTRAP_SERVERS, TOPIC_EVENTS
 
         # Configuración desde variables de entorno o valores por defecto
-        num_events = int(os.environ.get("KAFKA_NUM_EVENTS", "1500"))
-        delay = float(os.environ.get("KAFKA_EVENT_DELAY", "0.1"))
+        num_events = int(os.environ.get("KAFKA_NUM_EVENTS", "500"))
+        delay = float(os.environ.get("KAFKA_EVENT_DELAY", "0.02"))
 
         log(f"Configuración: {num_events} eventos, delay={delay}s")
+        log(f"Kafka servers: {KAFKA_BOOTSTRAP_SERVERS}")
+        log(f"Topic: {TOPIC_EVENTS}")
+
+        # Verificar conexión a Kafka antes de enviar
+        log("Verificando conexión a Kafka...")
+        test_producer = KafkaProducer(
+            bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+            value_serializer=lambda v: b"test",
+            acks='all',
+            request_timeout_ms=10000,
+            max_block_ms=15000
+        )
+        test_producer.send(TOPIC_EVENTS, value=b"connection_test")
+        test_producer.flush()
+        test_producer.close()
+        log("✓ Conexión a Kafka exitosa")
 
         # Ejecutar productor
         stats = run_producer(num_events=num_events, delay=delay)
+
+        # Verificar que los mensajes llegaron
+        log(f"Kafka producer stats: {stats.get('eventos_enviados', 0)} enviados")
 
         complete_step("kafka_events", stats)
         return True, stats
 
     except Exception as e:
         log(f"  [FAIL] Kafka events error: {e}")
+        import traceback
+        traceback.print_exc()
         fail_step("kafka_events", str(e))
         return False, {}
 
@@ -441,7 +463,7 @@ def step_spark_streaming():
         if not os.path.exists(spark_script):
             raise Exception(f"Spark streaming script not found: {spark_script}")
 
-        # Ejecutar Spark submit con timeout de 90 segundos (60s streaming + overhead)
+        # Ejecutar Spark submit con timeout de 250 segundos (200s streaming + overhead)
         rc, out, err = run_cmd(
             [
                 "spark-submit",
@@ -451,7 +473,7 @@ def step_spark_streaming():
                 spark_script
             ],
             cwd=PIPELINE_DIR,
-            timeout=90
+            timeout=250
         )
 
         if rc != 0:

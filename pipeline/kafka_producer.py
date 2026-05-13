@@ -59,30 +59,30 @@ PRECIOS_BASE = {
 # Títulos por tipo de propiedad
 TITULOS_BASE = {
     "departamento": [
-        "Departamento moderno en {distrito}",
-        "Hermoso departamento con vista en {distrito}",
-        "Departamento amplio ideal familia en {distrito}",
-        "Departamento estrenar en {distrito}",
-        "Departamento lujo en {distrito}"
+        "Departamento moderno en {district}",
+        "Hermoso departamento con vista en {district}",
+        "Departamento amplio ideal familia en {district}",
+        "Departamento estrenar en {district}",
+        "Departamento lujo en {district}"
     ],
     "casa": [
-        "Casa familiar en {distrito}",
-        "Casa con jardín en {distrito}",
-        "Casa moderna en {distrito}",
-        "Casa espaciosa en {distrito}",
-        "Casa exclusiva en {distrito}"
+        "Casa familiar en {district}",
+        "Casa con jardín en {district}",
+        "Casa moderna en {district}",
+        "Casa espaciosa en {district}",
+        "Casa exclusiva en {district}"
     ],
     "terreno": [
-        "Terreno residencial en {distrito}",
-        "Terreno comercial en {distrito}",
-        "Lote de terreno en {distrito}",
-        "Terreno para construcción en {distrito}"
+        "Terreno residencial en {district}",
+        "Terreno comercial en {district}",
+        "Lote de terreno en {district}",
+        "Terreno para construcción en {district}"
     ],
     "local_comercial": [
-        "Local comercial en {distrito}",
-        "Oficina en {distrito}",
-        "Local para negocio en {distrito}",
-        "Espacio comercial en {distrito}"
+        "Local comercial en {district}",
+        "Oficina en {district}",
+        "Local para negocio en {district}",
+        "Espacio comercial en {district}"
     ]
 }
 
@@ -519,7 +519,9 @@ def run_producer(num_events=1500, delay=0.1):
         log(f"  Alertas por tipo: {stats['alertas_por_tipo']}")
         
     except Exception as e:
+        import traceback
         log(f"[ERROR] Producer error: {e}")
+        log(f"[ERROR] Traceback: {traceback.format_exc()}")
         stats["errores"] += 1
         stats["error_detalle"] = str(e)
     

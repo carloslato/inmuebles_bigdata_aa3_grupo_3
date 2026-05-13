@@ -10,7 +10,7 @@ class AdondeVivirSpider(Spider):
     start_urls = ["https://www.adondevivir.com/departamentos-en-venta-en-lima.html"]
     concurrent_requests = 5
 
-    max_items = 1000  # <-- LIMITE (None para ilimitado)
+    max_items = 100  # <-- LIMITE (None para ilimitado)
     scraped_count = 0
 
     async def parse(self, response: Response):

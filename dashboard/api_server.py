@@ -54,5 +54,17 @@ def get_latest(collection):
     return jsonify(docs)
 
 
+@app.route("/api/health")
+def health_check():
+    """Diagnostic: collections counts"""
+    try:
+        counts = {}
+        for coll_name in ALLOWED_COLLECTIONS:
+            counts[coll_name] = db[coll_name].count_documents({})
+        return jsonify({"status": "ok", "collections": counts})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)

@@ -372,6 +372,12 @@
     
     let charts = {};
     
+    // Persistencia de eventos en navegador (timeline acumulativo)
+    let accumulatedEvents = [];
+    let accumulatedAlertas = [];
+    let knownEventIds = new Set();
+    let knownAlertIds = new Set();
+    
     async function loadFromMongo(collection) {
         const url = `${API_URL}/${collection}`;
         return await fetchJSON(url);
@@ -651,15 +657,36 @@
     }
 
     async function loadStreamingData() {
-        const eventos = await loadFromMongo('eventos_streaming');
-        const alertas = await loadFromMongo('alertas_streaming');
+        const nuevosEventos = await loadFromMongo('eventos_streaming');
+        const nuevasAlertas = await loadFromMongo('alertas_streaming');
         const resumen = await loadFromMongo('resumen_eventos_streaming');
 
-        renderStreamingEvents(eventos);
-        renderAlertas(alertas);
-        renderEventosTipo(eventos, resumen);
+        // Acumular eventos sin duplicados (persistencia en navegador)
+        if (nuevosEventos && nuevosEventos.length) {
+            for (const evt of nuevosEventos) {
+                const id = evt.event_id || evt._id || evt.timestamp + evt.event_type;
+                if (!knownEventIds.has(id)) {
+                    knownEventIds.add(id);
+                    accumulatedEvents.push(evt);
+                }
+            }
+        }
+        // Acumular alertas sin duplicados
+        if (nuevasAlertas && nuevasAlertas.length) {
+            for (const alrt of nuevasAlertas) {
+                const id = alrt.alert_id || alrt._id || alrt.timestamp + alrt.alert_type;
+                if (!knownAlertIds.has(id)) {
+                    knownAlertIds.add(id);
+                    accumulatedAlertas.push(alrt);
+                }
+            }
+        }
+
+        renderStreamingEvents(accumulatedEvents);
+        renderAlertas(accumulatedAlertas);
+        renderEventosTipo(accumulatedEvents, resumen);
         renderTasaEventos(resumen);
-        renderPreciosStreaming(eventos);
+        renderPreciosStreaming(accumulatedEvents);
     }
 
     function renderStreamingEvents(eventos) {
@@ -738,8 +765,9 @@
         const districts = {};
         if (eventos && eventos.length) {
             eventos.forEach(item => {
-                const distrito = item.distrito || item.district || item.location || 'N/A';
-                const precio = Number(item.precio || item.price || item.valor || 0);
+                const data = item.data || {};
+                const distrito = data.district || item.distrito || item.district || item.location || 'N/A';
+                const precio = Number(data.price || item.precio || item.price || item.valor || 0);
                 if (!precio || precio <= 0) return;
                 if (!districts[distrito]) districts[distrito] = {total: 0, count: 0};
                 districts[distrito].total += precio;
@@ -1125,6 +1153,7 @@
         setInterval(() => {
             loadStreamingData();
             loadPipelineHistory();
+            loadPipelineStatus();
         }, 3000);
     });
     </script>
