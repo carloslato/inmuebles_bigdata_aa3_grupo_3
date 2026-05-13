@@ -318,7 +318,7 @@
                         <div class="chart-container"><canvas id="chartEventosTipo"></canvas></div>
                     </div>
                 </div>
-                <div class="grid-2 mt-10">
+                <div class="grid-2 mt-10 hidden">
                     <div class="card">
                         <h3>🔔 Alertas Recientes</h3>
                         <div id="alertasLive"><div class="loading">Sin alertas...</div></div>
@@ -328,7 +328,7 @@
                         <div class="chart-container"><canvas id="chartTasaEventos"></canvas></div>
                     </div>
                 </div>
-                <div class="card mt-10">
+                <div class="card mt-10 hidden">
                     <h3>🏷️ Precios Streaming por Distrito</h3>
                     <div class="chart-container"><canvas id="chartPreciosStreaming"></canvas></div>
                 </div>
@@ -749,15 +749,29 @@
     function renderTasaEventos(resumen) {
         const points = [];
         if (resumen && resumen.length) {
-            resumen.slice(0, 20).reverse().forEach(item => {
-                const fecha = parseDate(item.fecha || item.timestamp || item.created_at);
-                if (!fecha) return;
-                const valor = Number(item.tasa || item.rate || item.count || item.cantidad || 0);
+            // El resumen tiene estructura de window: {start, end}, event_type, total_eventos, eventos_unicos
+            const sorted = [...resumen].sort((a, b) => {
+                const aStart = a.window?.start || a.start || 0;
+                const bStart = b.window?.start || b.start || 0;
+                return aStart - bStart;
+            });
+            sorted.slice(-20).forEach(item => {
+                // Usar window.start como timestamp
+                const ts = item.window?.start || item.start;
+                const fecha = ts ? new Date(Number(ts)) : null;
+                if (!fecha || Number.isNaN(fecha.getTime())) return;
+                const valor = Number(item.total_eventos || item.count || 0);
                 points.push({x: fecha, y: valor});
             });
         }
         if (points.length) {
-            createLineChart('chartTasaEventos', points, 'Eventos por minuto');
+            createLineChart('chartTasaEventos', points, 'Eventos por ventana');
+        } else {
+            // Si no hay datos, mostrar un mensaje
+            const container = document.getElementById('chartTasaEventos');
+            if (container) {
+                container.parentElement.innerHTML = '<div class="loading">Sin datos de tasa disponibles. Los eventos se procesan en ventanas de tiempo.</div>';
+            }
         }
     }
 
@@ -765,9 +779,11 @@
         const districts = {};
         if (eventos && eventos.length) {
             eventos.forEach(item => {
+                // Manejar estructura anidada: data.district, data.price
                 const data = item.data || {};
-                const distrito = data.district || item.distrito || item.district || item.location || 'N/A';
-                const precio = Number(data.price || item.precio || item.price || item.valor || 0);
+                let distrito = data.district || item.district || item.distrito || 'N/A';
+                let precio = data.price || item.price || item.precio || 0;
+                precio = Number(precio);
                 if (!precio || precio <= 0) return;
                 if (!districts[distrito]) districts[distrito] = {total: 0, count: 0};
                 districts[distrito].total += precio;
@@ -779,6 +795,22 @@
         const top = values.slice(0, 12);
         if (top.length) {
             createBarChart('chartPreciosStreaming', top.map(d => d.distrito), top.map(d => Math.round(d.average)), 'Precio promedio ($)', getColor(1, 0.7));
+        } else {
+            // Si no hay datos con estructura anidada, también buscar en datos planos
+            if (eventos && eventos.length) {
+                eventos.forEach(item => {
+                    const distrito = item.distrito || item.district || 'N/A';
+                    const precio = Number(item.precio_promedio || item.precio || item.price || 0);
+                    if (!precio || precio <= 0) return;
+                    if (!districts[distrito]) districts[distrito] = {total: precio * item.total_propiedades || 1, count: item.total_propiedades || 1};
+                });
+            }
+            const values2 = Object.entries(districts).map(([key, value]) => ({distrito: key, average: value.total / value.count}));
+            values2.sort((a, b) => b.average - a.average);
+            const top2 = values2.slice(0, 12);
+            if (top2.length) {
+                createBarChart('chartPreciosStreaming', top2.map(d => d.distrito), top2.map(d => Math.round(d.average)), 'Precio promedio ($)', getColor(1, 0.7));
+            }
         }
     }
 

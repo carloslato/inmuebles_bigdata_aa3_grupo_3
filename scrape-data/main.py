@@ -10,7 +10,7 @@ class AdondeVivirSpider(Spider):
     start_urls = ["https://www.adondevivir.com/departamentos-en-venta-en-lima.html"]
     concurrent_requests = 5
 
-    max_items = 100  # <-- LIMITE (None para ilimitado)
+    max_items = 10000  # <-- LIMITE (None para ilimitado)
     scraped_count = 0
 
     async def parse(self, response: Response):
@@ -110,7 +110,7 @@ class LaEncontreSpider(Spider):
     start_urls = ["https://www.laencontre.com.pe/venta/departamentos/lima"]
     concurrent_requests = 5
 
-    max_items = 1000  # <-- LIMITE (None para ilimitado)
+    max_items = 10000  # <-- LIMITE (None para ilimitado)
     scraped_count = 0
 
     async def parse(self, response: Response):
@@ -214,7 +214,7 @@ class InfoCasasSpider(Spider):
     name = "infocasas"
     start_urls = ["https://www.infocasas.com.pe/venta/departamentos/lima"]
     concurrent_requests = 5
-    max_pages = 25  # Límite de seguridad para evitar bucles infinitos
+    max_pages = 100  # Límite de seguridad para evitar bucles infinitos
 
     async def parse(self, response: Response):
         """Procesa la página de listado de infocasas"""
