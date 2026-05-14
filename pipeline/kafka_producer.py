@@ -11,8 +11,23 @@ from datetime import datetime, timedelta
 from config import *
 from logger_config import setup_logger
 
+from alerts_manager import persist_alert
+from metrics_manager import MetricsManager
+from kafka_metrics_producer import send_metrics
+
+# =============================================
+# Logger
+# =============================================
 logger = setup_logger("kafka_producer")
 
+# =============================================
+# Metrics Manager
+# =============================================
+metrics_manager = MetricsManager()
+
+# =============================================
+# Producer Kafka
+# =============================================
 producer = KafkaProducer(
     bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
     value_serializer=lambda v: json.dumps(v).encode("utf-8"),
@@ -23,6 +38,9 @@ producer = KafkaProducer(
     batch_size=16384
 )
 
+# =============================================
+# Catálogo inmobiliario
+# =============================================
 DISTRICTS = {
     "Miraflores": {
         "base_price": 180000,
@@ -48,6 +66,31 @@ DISTRICTS = {
         "base_price": 170000,
         "lat": -12.1414,
         "lon": -77.0206
+    },
+    "San Borja": {
+        "base_price": 145000,
+        "lat": -12.1077,
+        "lon": -76.9989
+    },
+    "Jesús María": {
+        "base_price": 115000,
+        "lat": -12.0746,
+        "lon": -77.0503
+    },
+    "Lince": {
+        "base_price": 85000,
+        "lat": -12.0840,
+        "lon": -77.0310
+    },
+    "Magdalena": {
+        "base_price": 110000,
+        "lat": -12.0924,
+        "lon": -77.0678
+    },
+    "Pueblo Libre": {
+        "base_price": 95000,
+        "lat": -12.0765,
+        "lon": -77.0672
     }
 }
 
@@ -72,6 +115,9 @@ EVENT_TYPES = [
     "propiedad_destacada"
 ]
 
+# =============================================
+# Generador de eventos
+# =============================================
 def generate_event():
 
     district = random.choice(list(DISTRICTS.keys()))
@@ -119,6 +165,9 @@ def generate_event():
 
     return event
 
+# =============================================
+# Reglas de alerta
+# =============================================
 def check_alert_rules(event):
 
     alerts = []
@@ -154,6 +203,9 @@ def check_alert_rules(event):
 
     return alerts
 
+# =============================================
+# Ejecutar producer
+# =============================================
 def run_producer(
     num_events=TOTAL_EVENTS,
     delay=None
@@ -190,15 +242,22 @@ def run_producer(
 
             event_counter[event_type] += 1
 
+            metrics_manager.process_event(event)
+
             alerts = check_alert_rules(event)
 
             for alert in alerts:
+
                 producer.send(
                     TOPIC_ALERTS,
                     value=alert
                 )
 
                 total_alerts += 1
+
+                metrics_manager.process_alert()
+
+                persist_alert(alert)
 
             if i % 100 == 0:
                 logger.info(
@@ -214,11 +273,18 @@ def run_producer(
             2
         )
 
+        streaming_metrics = metrics_manager.get_metrics()
+
+        send_metrics(streaming_metrics)
+
+        logger.info(streaming_metrics)
+
         stats = {
             "total_events": num_events,
             "alerts_generated": total_alerts,
             "events_per_type": dict(event_counter),
-            "execution_time_seconds": execution_time
+            "execution_time_seconds": execution_time,
+            "streaming_metrics": streaming_metrics
         }
 
         logger.info("Simulación Kafka finalizada")
@@ -233,5 +299,8 @@ def run_producer(
     finally:
         producer.close()
 
+# =============================================
+# Main
+# =============================================
 if __name__ == "__main__":
     run_producer()
