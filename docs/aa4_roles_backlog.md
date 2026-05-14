@@ -133,16 +133,16 @@ Agregar Kafka (Zookeeper + Broker) al ecosistema Docker, configurar redes, volú
 
 ### ✅ Backlog / Checklist
 
-- [ ] 1.1 Agregar servicio `zookeeper` al `docker-compose.yml`
-- [ ] 1.2 Agregar servicio `kafka` al `docker-compose.yml`
-- [ ] 1.3 Configurar healthcheck para Kafka
-- [ ] 1.4 Agregar dependencias Kafka al contenedor pipeline (`kafka-python` en requirements.txt)
-- [ ] 1.5 Crear topic `inmuebles_events` automáticamente al iniciar Kafka (con script de init o configuración)
-- [ ] 1.6 Crear topic `inmuebles_alerts` para alertas
-- [ ] 1.7 Crear script `pipeline/kafka_setup.py` que verifique/crea topics al iniciar
-- [ ] 1.8 Verificar conectividad entre contenedores: pipeline → kafka:9092
-- [ ] 1.9 Actualizar `pipeline/run_pipeline.py` para que llame a `kafka_setup.py` al inicio
-- [ ] 1.10 Hacer commit con mensaje: `[Rol 1] Infraestructura Kafka agregada a Docker Compose`
+- [x] 1.1 Agregar servicio `zookeeper` al `docker-compose.yml`
+- [x] 1.2 Agregar servicio `kafka` al `docker-compose.yml`
+- [x] 1.3 Configurar healthcheck para Kafka
+- [x] 1.4 Agregar dependencias Kafka al contenedor pipeline (`kafka-python` en requirements.txt)
+- [x] 1.5 Crear topic `inmuebles_events` automáticamente al iniciar Kafka (con script de init o configuración)
+- [x] 1.6 Crear topic `inmuebles_alerts` para alertas
+- [x] 1.7 Crear script `pipeline/kafka_setup.py` que verifique/crea topics al iniciar
+- [x] 1.8 Verificar conectividad entre contenedores: pipeline → kafka:9092
+- [x] 1.9 Actualizar `pipeline/run_pipeline.py` para que llame a `kafka_setup.py` al inicio
+- [x] 1.10 Hacer commit con mensaje: `[Rol 1] Infraestructura Kafka agregada a Docker Compose`
 
 ### 💻 Prompt para IA (Copia y pega esto como contexto para tu asistente IA)
 
@@ -499,19 +499,19 @@ Actualizar el dashboard HTML para que: (1) cargue datos históricos de scrapings
 
 ### ✅ Backlog / Checklist
 
-- [ ] 4.1 Analizar estructura actual del dashboard (index.html + Chart.js)
-- [ ] 4.2 Agregar sección "Historial de Pipelines" que lea pipeline_summary de MongoDB
-- [ ] 4.3 Modificar dashboard para cargar datos históricos al iniciar
-- [ ] 4.4 Crear proxy API (mini servidor Flask o Python) para que dashboard lea MongoDB
-- [ ] 4.5 Agregar pestaña "Streaming en Vivo" con:
+- [x] 4.1 Analizar estructura actual del dashboard (index.html + Chart.js)
+- [x] 4.2 Agregar sección "Historial de Pipelines" que lea pipeline_summary de MongoDB
+- [x] 4.3 Modificar dashboard para cargar datos históricos al iniciar
+- [x] 4.4 Crear proxy API (mini servidor Flask o Python) para que dashboard lea MongoDB
+- [x] 4.5 Agregar pestaña "Streaming en Vivo" con:
       - Últimos eventos en tiempo real
       - Contador de eventos por tipo
       - Alertas en vivo
-- [ ] 4.6 Implementar actualización automática cada 3 segundos (setInterval + fetch a API)
-- [ ] 4.7 Agregar gráfico de línea temporal con tasa de eventos
-- [ ] 4.8 Agregar tabla de alertas recientes
-- [ ] 4.9 Asegurar que pipeline_summary tenga datos históricos persistentes
-- [ ] 4.10 Hacer commit con mensaje: `[Rol 4] Dashboard en tiempo real y persistencia histórica`
+- [x] 4.6 Implementar actualización automática cada 3 segundos (setInterval + fetch a API)
+- [x] 4.7 Agregar gráfico de línea temporal con tasa de eventos
+- [x] 4.8 Agregar tabla de alertas recientes
+- [x] 4.9 Asegurar que pipeline_summary tenga datos históricos persistentes
+- [x] 4.10 Hacer commit con mensaje: `[Rol 4] Dashboard en tiempo real y persistencia histórica`
 
 ### 💻 Prompt para IA (Copia y pega esto como contexto para tu asistente IA)
 
@@ -661,16 +661,16 @@ Actualizar toda la documentación del proyecto para reflejar los cambios de AA4:
 
 ### ✅ Backlog / Checklist
 
-- [ ] 5.1 Verificar que existan 5+ archivos históricos en 3+ formatos
-- [ ] 5.2 Crear tabla completa de archivos (formato, registros, fuente, uso)
-- [ ] 5.3 Crear diagrama de arquitectura actualizado (con Kafka y streaming)
-- [ ] 5.4 Actualizar README.md con nueva descripción y componentes
-- [ ] 5.5 Crear `docs/grupo4_Evidencia4.md` con el informe completo
-- [ ] 5.6 Tomar capturas de evidencia (Docker, Kafka, Spark Streaming, MongoDB)
-- [ ] 5.7 Asegurar que el repositorio tenga ramas y commits de todos
-- [ ] 5.8 Verificar que el dashboard muestre datos streaming correctamente
-- [ ] 5.9 Crear presentación de exposición (estructura 15-20 min)
-- [ ] 5.10 Hacer commit con mensaje: `[Rol 5] Documentación AA4 actualizada`
+- [x] 5.1 Verificar que existan 5+ archivos históricos en 3+ formatos
+- [x] 5.2 Crear tabla completa de archivos (formato, registros, fuente, uso)
+- [x] 5.3 Crear diagrama de arquitectura actualizado (con Kafka y streaming)
+- [x] 5.4 Actualizar README.md con nueva descripción y componentes
+- [x] 5.5 Crear `docs/grupo4_Evidencia4.md` con el informe completo
+- [x] 5.6 Tomar capturas de evidencia (Docker, Kafka, Spark Streaming, MongoDB)
+- [x] 5.7 Asegurar que el repositorio tenga ramas y commits de todos
+- [x] 5.8 Verificar que el dashboard muestre datos streaming correctamente
+- [x] 5.9 Crear presentación de exposición (estructura 15-20 min)
+- [x] 5.10 Hacer commit con mensaje: `[Rol 5] Documentación AA4 actualizada`
 
 ### 💻 Prompt para IA (Copia y pega esto como contexto para tu asistente IA)
 
